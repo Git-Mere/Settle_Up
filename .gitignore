@@ -1,0 +1,54 @@
+# Build
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Secrets
+appsettings.Development.json
+appsettings.Local.json
+.env
+.env.*
+secrets.json
+
+# Azure
+.azure/
+.local.settings.json
+
+# Docker
+docker-compose.override.yml
+*.dockerfile.user
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temp
+*.cache
+*.tmp
+*.temp
+*.bak
