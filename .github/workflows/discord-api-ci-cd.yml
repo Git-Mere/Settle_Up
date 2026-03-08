@@ -1,0 +1,62 @@
+name: discord-api CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/discord-api/**"
+      - ".github/workflows/discord-api-ci-cd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  SERVICE_PATH: services/discord-api
+  PROJECT_PATH: services/discord-api/src/DiscordApi/DiscordApi.csproj
+  IMAGE_NAME: discord-api
+
+jobs:
+  build-and-push:
+    name: Build and Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --no-build --output ./publish
+
+      - name: Build Image
+        run: |
+          docker build \
+            --file ${{ env.SERVICE_PATH }}/Dockerfile \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest \
+            --platform linux/amd64 \
+            ${{ env.SERVICE_PATH }}
+
+      - name: Login to ACR
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_NAME }}.azurecr.io \
+            --username ${{ secrets.ACR_USERNAME }} \
+            --password-stdin
+
+      - name: Push image
+        run: |
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest

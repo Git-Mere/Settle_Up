@@ -1,0 +1,10 @@
+name: receipt-parser CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "receipt-parser service not created yet"
