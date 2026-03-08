@@ -2,15 +2,24 @@
 using Discord;
 using Discord.WebSocket;
 using OpenTelemetry;
-using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using DotNetEnv;
+
+Env.Load("../.env");
 
 var token = Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
 if (string.IsNullOrWhiteSpace(token))
 {
     Console.Error.WriteLine("환경 변수 DISCORD_BOT_TOKEN 이 필요합니다.");
     return;
+}
+
+using var httpClient = new HttpClient();
+var blobUploader = BlobImageUploader.CreateFromEnvironment(httpClient, out var blobConfigError);
+if (blobUploader is null)
+{
+    Console.Error.WriteLine($"Blob 업로더 비활성화: {blobConfigError}");
 }
 
 var serviceName = Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? "discord-api";
@@ -26,16 +35,13 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddConsoleExporter()
     .Build();
 
-using var meterProvider = Sdk.CreateMeterProviderBuilder()
-    .SetResourceBuilder(resourceBuilder)
-    .AddMeter(Telemetry.MeterName)
-    .AddConsoleExporter()
-    .Build();
-
 var client = new DiscordSocketClient(new DiscordSocketConfig
 {
     GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent
 });
+
+var settleUpHandler = new SettleUpCommandHandler(blobUploader);
+var pingTestHandler = new PingTestCommandHandler();
 
 var commandRegistered = false;
 
@@ -56,20 +62,9 @@ client.Ready += async () =>
         return;
     }
 
-    var settleUpCommand = new SlashCommandBuilder()
-        .WithName("settle-up")
-        .WithDescription("정산 이미지 업로드를 시작합니다.")
-        .Build();
+    await client.Rest.CreateGlobalCommand(SettleUpCommandHandler.BuildCommand());
+    await client.Rest.CreateGlobalCommand(PingTestCommandHandler.BuildCommand());
 
-    var pingTestCommand = new SlashCommandBuilder()
-        .WithName("pingtest")
-        .WithDescription("봇 응답을 테스트합니다.")
-        .Build();
-
-    await client.Rest.CreateGlobalCommand(settleUpCommand);
-    await client.Rest.CreateGlobalCommand(pingTestCommand);
-
-    Telemetry.CommandsRegisteredCounter.Add(2);
     activity?.SetTag("discord.commands_registered", 2);
     commandRegistered = true;
 };
@@ -81,62 +76,78 @@ client.SlashCommandExecuted += async command =>
     activity?.SetTag("discord.user.id", command.User.Id.ToString());
     activity?.SetTag("discord.guild.id", command.GuildId?.ToString());
 
-    var commandStart = Stopwatch.StartNew();
-
     try
     {
-        if (string.Equals(command.Data.Name, "settle-up", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(command.Data.Name, SettleUpCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
         {
-            await command.RespondAsync("이미지를 업로드하십시오. (2분 내 첨부)", ephemeral: true);
-
-            if (command.ChannelId is null)
-            {
-                Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", "settle-up"), new KeyValuePair<string, object?>("status", "missing_channel"));
-                await command.FollowupAsync("채널 정보를 확인할 수 없습니다. 서버 채널에서 다시 시도해 주세요.", ephemeral: true);
-                return;
-            }
-
-            var waitStart = Stopwatch.StartNew();
-            var imageMessage = await WaitForImageUploadAsync(
-                client,
-                command.User.Id,
-                command.ChannelId.Value,
-                TimeSpan.FromMinutes(1));
-            Telemetry.ImageWaitDurationMs.Record(waitStart.Elapsed.TotalMilliseconds);
-
-            if (imageMessage is null)
-            {
-                Telemetry.ImageUploadTimeoutCounter.Add(1);
-                Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", "settle-up"), new KeyValuePair<string, object?>("status", "timeout"));
-                await command.FollowupAsync("시간이 초과되었습니다. 다시 `/settle-up`을 실행해 주세요.", ephemeral: true);
-                return;
-            }
-
-            var attachment = imageMessage.Attachments.First();
-            Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", "settle-up"), new KeyValuePair<string, object?>("status", "success"));
-            await command.FollowupAsync($"이미지 업로드 확인: {attachment.Url}", ephemeral: true);
+            var status = await settleUpHandler.HandleSlashCommandAsync(command);
+            activity?.SetTag("discord.command.status", status);
             return;
         }
 
-        if (string.Equals(command.Data.Name, "pingtest", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(command.Data.Name, PingTestCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
         {
-            Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", "pingtest"), new KeyValuePair<string, object?>("status", "success"));
-            await command.RespondAsync("pong! slash command 정상 작동 중입니다.", ephemeral: true);
+            var status = await pingTestHandler.HandleSlashCommandAsync(command);
+            activity?.SetTag("discord.command.status", status);
             return;
         }
 
-        Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", command.Data.Name), new KeyValuePair<string, object?>("status", "unknown"));
+        activity?.SetTag("discord.command.status", "unknown");
     }
     catch (Exception ex)
     {
-        Telemetry.SlashCommandsCounter.Add(1, new KeyValuePair<string, object?>("command", command.Data.Name), new KeyValuePair<string, object?>("status", "error"));
+        activity?.SetTag("discord.command.status", "error");
         activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         activity?.AddException(ex);
         throw;
     }
-    finally
+};
+
+client.ButtonExecuted += async component =>
+{
+    using var activity = Telemetry.ActivitySource.StartActivity("discord.button.execute");
+    activity?.SetTag("discord.component.custom_id", component.Data.CustomId);
+    activity?.SetTag("discord.user.id", component.User.Id.ToString());
+    activity?.SetTag("discord.guild.id", component.GuildId?.ToString());
+
+    try
     {
-        Telemetry.SlashCommandDurationMs.Record(commandStart.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("command", command.Data.Name));
+        var status = await settleUpHandler.HandleButtonAsync(component);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            activity?.SetTag("discord.button.status", status);
+        }
+    }
+    catch (Exception ex)
+    {
+        activity?.SetTag("discord.button.status", "error");
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+        activity?.AddException(ex);
+        throw;
+    }
+};
+
+client.ModalSubmitted += async modal =>
+{
+    using var activity = Telemetry.ActivitySource.StartActivity("discord.modal.submit");
+    activity?.SetTag("discord.modal.custom_id", modal.Data.CustomId);
+    activity?.SetTag("discord.user.id", modal.User.Id.ToString());
+    activity?.SetTag("discord.guild.id", modal.GuildId?.ToString());
+
+    try
+    {
+        var status = await settleUpHandler.HandleModalAsync(modal);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            activity?.SetTag("discord.modal.status", status);
+        }
+    }
+    catch (Exception ex)
+    {
+        activity?.SetTag("discord.modal.status", "error");
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+        activity?.AddException(ex);
+        throw;
     }
 };
 
@@ -158,56 +169,3 @@ client.MessageReceived += async message =>
 await client.LoginAsync(TokenType.Bot, token);
 await client.StartAsync();
 await Task.Delay(Timeout.InfiniteTimeSpan);
-
-static async Task<SocketUserMessage?> WaitForImageUploadAsync(
-    DiscordSocketClient client,
-    ulong userId,
-    ulong channelId,
-    TimeSpan timeout)
-{
-    using var activity = Telemetry.ActivitySource.StartActivity("discord.wait_for_image");
-    activity?.SetTag("discord.user.id", userId.ToString());
-    activity?.SetTag("discord.channel.id", channelId.ToString());
-    activity?.SetTag("timeout.seconds", timeout.TotalSeconds);
-
-    var tcs = new TaskCompletionSource<SocketUserMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    Task Handler(SocketMessage rawMessage)
-    {
-        if (rawMessage is not SocketUserMessage message)
-        {
-            return Task.CompletedTask;
-        }
-
-        if (message.Author.IsBot || message.Author.Id != userId || message.Channel.Id != channelId)
-        {
-            return Task.CompletedTask;
-        }
-
-        if (message.Attachments.Any(a => a.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true))
-        {
-            tcs.TrySetResult(message);
-        }
-
-        return Task.CompletedTask;
-    }
-
-    client.MessageReceived += Handler;
-
-    try
-    {
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
-        if (completed != tcs.Task)
-        {
-            activity?.SetTag("result", "timeout");
-            return null;
-        }
-
-        activity?.SetTag("result", "received");
-        return await tcs.Task;
-    }
-    finally
-    {
-        client.MessageReceived -= Handler;
-    }
-}
