@@ -15,7 +15,7 @@ permissions:
 env:
   DOTNET_VERSION: "8.0.x"
   SERVICE_PATH: services/discord-api
-  PROJECT_PATH: services/discord-api/src/DiscordApi/DiscordApi.csproj
+  PROJECT_PATH: services/discord-api/src/DiscordApi.csproj
   IMAGE_NAME: discord-api
 
 jobs:
