@@ -1,0 +1,24 @@
+[
+  {
+    "id": "test-blob-created-event-1",
+    "eventType": "Microsoft.Storage.BlobCreated",
+    "subject": "/blobServices/default/containers/receipts/blobs/test.jpg",
+    "eventTime": "2026-03-09T21:50:00Z",
+    "data": {
+      "api": "PutBlob",
+      "clientRequestId": "sample-client-request-id",
+      "requestId": "sample-request-id",
+      "eTag": "0x8D0000000000000",
+      "contentType": "image/jpeg",
+      "contentLength": 12345,
+      "blobType": "BlockBlob",
+      "url": "https://<your-storage-account>.blob.core.windows.net/<your-container>/<your-path>/test.jpg",
+      "sequencer": "0000000000000000000000000000000000000000000000000000000000000001",
+      "storageDiagnostics": {
+        "batchId": "sample-batch-id"
+      }
+    },
+    "dataVersion": "1",
+    "metadataVersion": "1"
+  }
+]

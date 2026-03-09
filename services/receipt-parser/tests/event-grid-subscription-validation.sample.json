@@ -1,0 +1,14 @@
+[
+  {
+    "id": "test-validation-event-1",
+    "eventType": "Microsoft.EventGrid.SubscriptionValidationEvent",
+    "subject": "test/validation",
+    "eventTime": "2026-03-09T21:50:00Z",
+    "data": {
+      "validationCode": "test-validation-code-1234",
+      "validationUrl": "https://example.com/validation-url"
+    },
+    "dataVersion": "1",
+    "metadataVersion": "1"
+  }
+]

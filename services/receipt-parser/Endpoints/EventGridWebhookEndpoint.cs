@@ -13,7 +13,7 @@ public static class EventGridWebhookEndpoint
 
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
-        ReceiptProcessingService processingService,
+        IServiceProvider serviceProvider,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -43,6 +43,8 @@ public static class EventGridWebhookEndpoint
                 return TryBuildValidationResponse(payload, logger);
             }
         }
+
+        var processingService = serviceProvider.GetRequiredService<ReceiptProcessingService>();
 
         foreach (var eventGridEvent in events)
         {
