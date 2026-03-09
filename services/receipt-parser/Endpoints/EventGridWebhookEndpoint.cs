@@ -8,6 +8,8 @@ public static class EventGridWebhookEndpoint
 {
     private const string SubscriptionValidationEventType = "Microsoft.EventGrid.SubscriptionValidationEvent";
     private const string BlobCreatedEventType = "Microsoft.Storage.BlobCreated";
+    private const string AegEventTypeHeaderName = "aeg-event-type";
+    private const string SubscriptionValidationHeaderValue = "SubscriptionValidation";
 
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
@@ -16,8 +18,19 @@ public static class EventGridWebhookEndpoint
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("EventGridWebhookEndpoint");
+        var payload = await TryReadPayloadAsync(request, logger, cancellationToken);
+        if (payload is null)
+        {
+            return Results.BadRequest(new { message = "Invalid Event Grid payload" });
+        }
 
-        EventGridEvent[] events = await TryParseEventsAsync(request, logger, cancellationToken);
+        var aegEventType = request.Headers[AegEventTypeHeaderName].ToString();
+        if (string.Equals(aegEventType, SubscriptionValidationHeaderValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return TryBuildValidationResponse(payload, logger);
+        }
+
+        EventGridEvent[] events = TryParseEvents(payload, logger);
         if (events.Length == 0)
         {
             return Results.BadRequest(new { message = "Invalid Event Grid payload" });
@@ -27,15 +40,7 @@ public static class EventGridWebhookEndpoint
         {
             if (eventGridEvent.EventType == SubscriptionValidationEventType)
             {
-                var validationCode = TryGetValidationCode(eventGridEvent.Data);
-                if (string.IsNullOrWhiteSpace(validationCode))
-                {
-                    logger.LogWarning("Subscription validation code 누락");
-                    return Results.BadRequest(new { message = "Missing validation code" });
-                }
-
-                logger.LogInformation("Subscription validation 처리 완료");
-                return Results.Ok(new { validationResponse = validationCode });
+                return TryBuildValidationResponse(payload, logger);
             }
         }
 
@@ -53,14 +58,28 @@ public static class EventGridWebhookEndpoint
         return Results.Ok(new { message = "Events processed" });
     }
 
-    private static async Task<EventGridEvent[]> TryParseEventsAsync(
+    private static async Task<BinaryData?> TryReadPayloadAsync(
         HttpRequest request,
         ILogger logger,
         CancellationToken cancellationToken)
     {
         try
         {
-            var payload = await BinaryData.FromStreamAsync(request.Body, cancellationToken);
+            return await BinaryData.FromStreamAsync(request.Body, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Event Grid payload 읽기 실패");
+            return null;
+        }
+    }
+
+    private static EventGridEvent[] TryParseEvents(
+        BinaryData payload,
+        ILogger logger)
+    {
+        try
+        {
             return EventGridEvent.ParseMany(payload);
         }
         catch (Exception ex)
@@ -70,19 +89,54 @@ public static class EventGridWebhookEndpoint
         }
     }
 
-    private static string? TryGetValidationCode(BinaryData? eventData)
+    private static IResult TryBuildValidationResponse(
+        BinaryData payload,
+        ILogger logger)
     {
-        if (eventData is null)
+        var validationCode = TryGetValidationCode(payload);
+        if (string.IsNullOrWhiteSpace(validationCode))
+        {
+            logger.LogWarning("Subscription validation code 누락");
+            return Results.BadRequest(new { message = "Missing validation code" });
+        }
+
+        logger.LogInformation("Subscription validation 처리 완료");
+        return Results.Ok(new { validationResponse = validationCode });
+    }
+
+    private static string? TryGetValidationCode(BinaryData payload)
+    {
+        using var doc = JsonDocument.Parse(payload.ToMemory());
+
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                var validationCode = TryGetValidationCodeFromEventElement(element);
+                if (!string.IsNullOrWhiteSpace(validationCode))
+                {
+                    return validationCode;
+                }
+            }
+
+            return null;
+        }
+
+        return doc.RootElement.ValueKind == JsonValueKind.Object
+            ? TryGetValidationCodeFromEventElement(doc.RootElement)
+            : null;
+    }
+
+    private static string? TryGetValidationCodeFromEventElement(JsonElement eventElement)
+    {
+        if (!eventElement.TryGetProperty("data", out var dataElement) ||
+            dataElement.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        using var doc = JsonDocument.Parse(eventData.ToMemory());
-        if (doc.RootElement.TryGetProperty("validationCode", out var codeProperty))
-        {
-            return codeProperty.GetString();
-        }
-
-        return null;
+        return dataElement.TryGetProperty("validationCode", out var codeProperty)
+            ? codeProperty.GetString()
+            : null;
     }
 }
