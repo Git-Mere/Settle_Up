@@ -44,8 +44,7 @@ public static class EventGridWebhookEndpoint
             }
         }
 
-        var processingService = serviceProvider.GetRequiredService<ReceiptProcessingService>();
-
+        ReceiptProcessingService? processingService = null;
         foreach (var eventGridEvent in events)
         {
             if (eventGridEvent.EventType != BlobCreatedEventType)
@@ -54,6 +53,7 @@ public static class EventGridWebhookEndpoint
                 continue;
             }
 
+            processingService ??= serviceProvider.GetRequiredService<ReceiptProcessingService>();
             await processingService.ProcessBlobCreatedEventAsync(eventGridEvent, cancellationToken);
         }
 

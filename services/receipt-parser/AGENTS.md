@@ -28,8 +28,8 @@
 - `ReceiptParser__ModelId` (기본값: `prebuilt-receipt`)
 - `ReceiptParser__CosmosConnectionString`
 - `ReceiptParser__CosmosAccountEndpoint`
-- `ReceiptParser__CosmosDatabaseId`
-- `ReceiptParser__CosmosContainerId`
+- `ReceiptParser__CosmosDatabaseId` (기본값: `draft-receipt-db`)
+- `ReceiptParser__CosmosContainerId` (기본값: `draft-receipt`)
 - `ReceiptParser__DownstreamEventGridTopicEndpoint`
 - `ReceiptParser__DownstreamEventGridTopicKey`
 - `ReceiptParser__DownstreamEventType`

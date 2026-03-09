@@ -10,8 +10,8 @@ public sealed class ReceiptParserOptions
 
     public string? CosmosConnectionString { get; init; }
     public string? CosmosAccountEndpoint { get; init; }
-    public string CosmosDatabaseId { get; init; } = "settle-up";
-    public string CosmosContainerId { get; init; } = "receipts";
+    public string CosmosDatabaseId { get; init; } = "draft-receipt-db";
+    public string CosmosContainerId { get; init; } = "draft-receipt";
 
     public string? DownstreamEventGridTopicEndpoint { get; init; }
     public string? DownstreamEventGridTopicKey { get; init; }
