@@ -32,6 +32,7 @@ appsettings.Development.json
 appsettings.Local.json
 .env
 .env.*
+!services/receipt-parser/.env.example
 secrets.json
 
 # Azure
