@@ -112,7 +112,7 @@ services/receipt-parser/
 ## Environment Variables (currently used)
 필수/준필수:
 - `ReceiptParser__DocumentIntelligenceEndpoint`
-- `ReceiptParser__CosmosConnectionString`
+- `ReceiptParser__CosmosAccountEndpoint`
 
 권장:
 - `ReceiptParser__DocumentIntelligenceApiKey`
@@ -124,6 +124,11 @@ services/receipt-parser/
 - `ReceiptParser__DownstreamEventType`
 - `ReceiptParser__EnableLocalUploadTestEndpoint`
 - `OTEL_SERVICE_NAME` (기본값 `receipt-parser`)
+
+Cosmos 인증:
+- `CosmosClient`는 connection string이 아니라 `CosmosAccountEndpoint` + `DefaultAzureCredential`로 생성한다.
+- Azure 배포 시 Managed Identity에 Cosmos DB data-plane RBAC 권한이 필요하다.
+- 로컬에서는 `az login` 또는 개발 도구 로그인 자격 증명을 사용한다.
 
 `.env` 로딩 동작:
 - `Program.cs`에서 아래 순서로 탐색 후 처음 발견된 파일을 로드한다.

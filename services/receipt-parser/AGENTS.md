@@ -26,7 +26,7 @@
 - `ReceiptParser__DocumentIntelligenceEndpoint`
 - `ReceiptParser__DocumentIntelligenceApiKey`
 - `ReceiptParser__ModelId` (기본값: `prebuilt-receipt`)
-- `ReceiptParser__CosmosConnectionString`
+- `ReceiptParser__CosmosAccountEndpoint`
 - `ReceiptParser__CosmosDatabaseId`
 - `ReceiptParser__CosmosContainerId`
 - `ReceiptParser__DownstreamEventGridTopicEndpoint`
@@ -36,6 +36,9 @@
 - `OTEL_SERVICE_NAME`
 
 토큰/키/연결 문자열은 코드에 하드코딩하지 않는다.
+
+Cosmos DB 연결은 키 기반 connection string 대신 Azure IAM(RBAC) + `DefaultAzureCredential` 사용을 기본으로 한다.
+배포 환경에서는 Managed Identity, 로컬 개발에서는 Azure CLI / Visual Studio 로그인 자격 증명을 사용한다.
 
 ## Coding Guidelines
 - 엔드포인트, 파싱, 저장소, 이벤트 발행 책임을 분리한다.

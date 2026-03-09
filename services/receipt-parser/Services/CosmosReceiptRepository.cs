@@ -1,3 +1,4 @@
+using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 using receipt_parser.Configuration;
@@ -19,12 +20,14 @@ public sealed class CosmosReceiptRepository
         _options = options.Value;
         _logger = logger;
 
-        if (string.IsNullOrWhiteSpace(_options.CosmosConnectionString))
+        if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
         {
-            throw new InvalidOperationException("ReceiptParser:CosmosConnectionString 설정이 필요합니다.");
+            throw new InvalidOperationException("ReceiptParser:CosmosAccountEndpoint 설정이 필요합니다.");
         }
 
-        _cosmosClient = new CosmosClient(_options.CosmosConnectionString);
+        _cosmosClient = new CosmosClient(
+            accountEndpoint: _options.CosmosAccountEndpoint,
+            tokenCredential: new DefaultAzureCredential());
     }
 
     public async Task SaveAsync(ReceiptDocument document, CancellationToken cancellationToken)

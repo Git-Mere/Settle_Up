@@ -1,10 +1,62 @@
 name: receipt-parser CI
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/receipt-parser/**"
+      - ".github/workflows/receipt-parser-ci.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  SERVICE_PATH: services/receipt-parser
+  PROJECT_PATH: services/receipt-parser/receipt-parser.csproj
+  IMAGE_NAME: receipt-parser
+
 jobs:
-  placeholder:
+  build-and-push:
+    name: Build and Validate
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "receipt-parser service not created yet"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --no-build --output ./publish
+
+      - name: Build Image
+        run: |
+          docker build \
+            --file ${{ env.SERVICE_PATH }}/Dockerfile \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest \
+            --platform linux/amd64 \
+            ${{ env.SERVICE_PATH }}
+
+      - name: Login to ACR
+        run: |
+          echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.ACR_NAME }}.azurecr.io \
+            --username ${{ secrets.ACR_USERNAME }} \
+            --password-stdin
+
+      - name: Push image
+        run: |
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest

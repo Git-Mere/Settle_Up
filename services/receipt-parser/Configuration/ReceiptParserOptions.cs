@@ -8,7 +8,7 @@ public sealed class ReceiptParserOptions
     public string? DocumentIntelligenceApiKey { get; init; }
     public string ModelId { get; init; } = "prebuilt-receipt";
 
-    public string? CosmosConnectionString { get; init; }
+    public string? CosmosAccountEndpoint { get; init; }
     public string CosmosDatabaseId { get; init; } = "settle-up";
     public string CosmosContainerId { get; init; } = "receipts";
 
