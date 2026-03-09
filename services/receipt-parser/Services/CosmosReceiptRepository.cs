@@ -20,9 +20,16 @@ public sealed class CosmosReceiptRepository
         _options = options.Value;
         _logger = logger;
 
+        if (!string.IsNullOrWhiteSpace(_options.CosmosConnectionString))
+        {
+            _cosmosClient = new CosmosClient(_options.CosmosConnectionString);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
         {
-            throw new InvalidOperationException("ReceiptParser:CosmosAccountEndpoint 설정이 필요합니다.");
+            throw new InvalidOperationException(
+                "ReceiptParser:CosmosConnectionString 또는 ReceiptParser:CosmosAccountEndpoint 설정이 필요합니다.");
         }
 
         _cosmosClient = new CosmosClient(
@@ -38,13 +45,13 @@ public sealed class CosmosReceiptRepository
         var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
         var containerResponse = await database.CreateContainerIfNotExistsAsync(
             id: _options.CosmosContainerId,
-            partitionKeyPath: "/partitionKey",
+            partitionKeyPath: "/Id",
             cancellationToken: cancellationToken);
 
         var container = containerResponse.Container;
         await container.UpsertItemAsync(
             item: document,
-            partitionKey: new PartitionKey(document.PartitionKey),
+            partitionKey: new PartitionKey(document.Id),
             cancellationToken: cancellationToken);
 
         _logger.LogInformation("Cosmos 저장 완료. ReceiptId={ReceiptId}", document.Id);

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Azure;
-using receipt_parser.Models;
 using receipt_parser.Services;
 
 namespace receipt_parser.tests.LocalUploadTest;
@@ -9,7 +8,7 @@ public static class LocalUploadParseTestEndpoint
 {
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
-        DocumentIntelligenceReceiptParser parser,
+        ReceiptProcessingService processingService,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -29,32 +28,20 @@ public static class LocalUploadParseTestEndpoint
 
         await using var stream = file.OpenReadStream();
         var binaryData = await BinaryData.FromStreamAsync(stream, cancellationToken);
-        var result = await parser.ParseFromBinaryAsync(binaryData, $"local-upload:{file.FileName}", cancellationToken);
-        var now = DateTimeOffset.UtcNow;
-        var payload = new ReceiptParsedEventPayload(
-            Id: result.ReceiptId,
-            BlobUrl: result.BlobUrl,
-            Status: "Parsed",
-            UploadedByUserId: "local-test-user",
-            MerchantName: result.MerchantName,
-            TransactionDate: result.TransactionDate,
-            Currency: result.Currency,
-            Subtotal: result.Subtotal,
-            Tax: result.Tax,
-            Total: result.Total,
-            Items: result.Items,
-            ParseMetadata: result.ParseMetadata,
-            CreatedAtUtc: now,
-            UpdatedAtUtc: now);
+        var payload = await processingService.ProcessLocalUploadAsync(
+            binaryData,
+            source: $"local-upload:{file.FileName}",
+            uploadedByUserId: "local-test-user",
+            cancellationToken);
 
         Console.WriteLine("===== Parsed Receipt Payload =====");
         Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine("===== End Parsed Receipt Payload =====");
 
         logger.LogInformation(
-            "로컬 업로드 테스트 파싱 완료. FileName={FileName}, ReceiptId={ReceiptId}",
+            "로컬 업로드 테스트 처리 완료. FileName={FileName}, ReceiptId={ReceiptId}",
             file.FileName,
-            result.ReceiptId);
+            payload.Id);
 
         return Results.Ok(payload);
     }

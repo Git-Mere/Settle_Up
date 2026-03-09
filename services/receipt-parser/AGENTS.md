@@ -26,6 +26,7 @@
 - `ReceiptParser__DocumentIntelligenceEndpoint`
 - `ReceiptParser__DocumentIntelligenceApiKey`
 - `ReceiptParser__ModelId` (기본값: `prebuilt-receipt`)
+- `ReceiptParser__CosmosConnectionString`
 - `ReceiptParser__CosmosAccountEndpoint`
 - `ReceiptParser__CosmosDatabaseId`
 - `ReceiptParser__CosmosContainerId`
@@ -37,8 +38,9 @@
 
 토큰/키/연결 문자열은 코드에 하드코딩하지 않는다.
 
-Cosmos DB 연결은 키 기반 connection string 대신 Azure IAM(RBAC) + `DefaultAzureCredential` 사용을 기본으로 한다.
-배포 환경에서는 Managed Identity, 로컬 개발에서는 Azure CLI / Visual Studio 로그인 자격 증명을 사용한다.
+Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC) 둘 다 지원한다.
+`ReceiptParser__CosmosConnectionString`이 있으면 이를 우선 사용하고, 없으면 `ReceiptParser__CosmosAccountEndpoint` + `DefaultAzureCredential`로 연결한다.
+배포 환경에서는 Managed Identity, 로컬 개발에서는 connection string 또는 Azure CLI / Visual Studio 로그인 자격 증명을 사용할 수 있다.
 
 ## Coding Guidelines
 - 엔드포인트, 파싱, 저장소, 이벤트 발행 책임을 분리한다.
@@ -51,6 +53,7 @@ Cosmos DB 연결은 키 기반 connection string 대신 Azure IAM(RBAC) + `Defau
 ## Parsed Receipt Contract (Current)
 현재 기본 결과 객체는 아래 필드를 포함한다:
 - `id`
+- `Id` (Cosmos 컨테이너 partition key가 `/Id`일 때 저장 문서에 포함)
 - `status` (`Parsed`)
 - `blobUrl`
 - `uploadedByUserId`
@@ -65,7 +68,7 @@ Cosmos DB 연결은 키 기반 connection string 대신 Azure IAM(RBAC) + `Defau
 - `createdAtUtc`
 - `updatedAtUtc`
 
-로컬 테스트 엔드포인트도 동일 스키마로 응답해야 한다.
+로컬 테스트 엔드포인트도 동일 스키마로 응답해야 하며, 가능하면 운영 경로와 동일한 저장/발행 흐름을 재사용한다.
 
 ## Eventing Guidelines
 - `Microsoft.EventGrid.SubscriptionValidationEvent` 처리를 반드시 지원한다.
@@ -78,7 +81,7 @@ Cosmos DB 연결은 키 기반 connection string 대신 Azure IAM(RBAC) + `Defau
 - 외부 이벤트 payload는 신뢰하지 않고 항상 검증한다.
 - Blob URL 입력은 예상 스키마/형식 기준으로 방어적으로 처리한다.
 - 실제 운영 비밀값은 환경 변수 또는 Key Vault를 사용한다.
-- 원문 OCR 결과(JSON) 저장 시 민감정보 처리 정책을 문서화하고 준수한다.
+- 원문 OCR 결과(JSON)는 현재 저장하지 않는다. 필요 시 다시 도입하기 전 민감정보 처리 정책을 먼저 정의한다.
 
 ## Observability Guidelines
 - OpenTelemetry는 현재 로그/트레이싱 중심으로 사용한다.

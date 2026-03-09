@@ -10,5 +10,4 @@ public sealed record ParsedReceiptResult(
     decimal? Tax,
     decimal? Total,
     ParseMetadata ParseMetadata,
-    string RawResultJson,
     IReadOnlyList<ParsedReceiptItem> Items);

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.Identity;
@@ -64,7 +63,6 @@ public sealed class DocumentIntelligenceReceiptParser
             cancellationToken);
 
         var result = operation.Value;
-        var rawJson = JsonSerializer.Serialize(result);
 
         var analyzedDocument = result.Documents.FirstOrDefault();
         var merchantField = TryGetField(analyzedDocument, "MerchantName");
@@ -102,7 +100,6 @@ public sealed class DocumentIntelligenceReceiptParser
                 ModelId: _options.ModelId,
                 MerchantConfidence: merchantField?.Confidence,
                 TotalConfidence: totalField?.Confidence),
-            RawResultJson: rawJson,
             Items: items);
     }
 

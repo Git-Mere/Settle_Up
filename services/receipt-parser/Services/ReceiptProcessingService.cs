@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Azure.Messaging.EventGrid;
+using Azure;
 using receipt_parser.Models;
 using receipt_parser.Observability;
 
@@ -40,12 +41,34 @@ public sealed class ReceiptProcessingService
         }
 
         var parsed = await _parser.ParseFromBlobAsync(blobUrl, cancellationToken);
-        var document = BuildReceiptDocument(parsed);
+        await SaveAndPublishAsync(parsed, cancellationToken);
+    }
 
+    public async Task<ReceiptParsedEventPayload> ProcessLocalUploadAsync(
+        BinaryData binaryData,
+        string source,
+        string uploadedByUserId,
+        CancellationToken cancellationToken)
+    {
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt.process.local_upload");
+        activity?.SetTag("receipt.source", source);
+        activity?.SetTag("receipt.uploaded_by", uploadedByUserId);
+
+        var parsed = await _parser.ParseFromBinaryAsync(binaryData, source, cancellationToken);
+        return await SaveAndPublishAsync(parsed, cancellationToken, uploadedByUserId);
+    }
+
+    private async Task<ReceiptParsedEventPayload> SaveAndPublishAsync(
+        ParsedReceiptResult parsed,
+        CancellationToken cancellationToken,
+        string? uploadedByUserIdOverride = null)
+    {
+        var document = BuildReceiptDocument(parsed, uploadedByUserIdOverride);
         await _repository.SaveAsync(document, cancellationToken);
 
         var payload = BuildReceiptParsedEventPayload(document);
         await _publisher.PublishAsync(payload, cancellationToken);
+        return payload;
     }
 
     private static string? TryGetBlobUrl(BinaryData? eventData)
@@ -88,16 +111,17 @@ public sealed class ReceiptProcessingService
         return null;
     }
 
-    private static ReceiptDocument BuildReceiptDocument(ParsedReceiptResult parsed)
+    private static ReceiptDocument BuildReceiptDocument(
+        ParsedReceiptResult parsed,
+        string? uploadedByUserIdOverride = null)
     {
         var now = DateTimeOffset.UtcNow;
         return new ReceiptDocument
         {
             Id = parsed.ReceiptId,
-            PartitionKey = parsed.ReceiptId,
             Status = ParsedStatus,
             BlobUrl = parsed.BlobUrl,
-            UploadedByUserId = TryExtractUploadedByUserId(parsed.BlobUrl),
+            UploadedByUserId = uploadedByUserIdOverride ?? TryExtractUploadedByUserId(parsed.BlobUrl),
             MerchantName = parsed.MerchantName,
             Currency = parsed.Currency,
             TransactionDate = parsed.TransactionDate,
@@ -106,7 +130,6 @@ public sealed class ReceiptProcessingService
             Total = parsed.Total,
             Items = parsed.Items.ToList(),
             ParseMetadata = parsed.ParseMetadata,
-            RawResultJson = parsed.RawResultJson,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
