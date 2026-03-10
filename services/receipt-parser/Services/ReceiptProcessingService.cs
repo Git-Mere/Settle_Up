@@ -29,7 +29,7 @@ public sealed class ReceiptProcessingService
 
     public async Task ProcessBlobCreatedEventAsync(EventGridEvent eventGridEvent, CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.process.blob_created");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.blob_event.process");
         activity?.SetTag("event.id", eventGridEvent.Id);
         activity?.SetTag("event.type", eventGridEvent.EventType);
 
@@ -40,8 +40,21 @@ public sealed class ReceiptProcessingService
             return;
         }
 
-        var parsed = await _parser.ParseFromBlobAsync(blobUrl, cancellationToken);
-        await SaveAndPublishAsync(parsed, cancellationToken);
+        _logger.LogInformation("Blob event received. EventId={EventId} BlobUrl={BlobUrl}", eventGridEvent.Id, blobUrl);
+
+        try
+        {
+            var parsed = await _parser.ParseFromBlobAsync(blobUrl, cancellationToken);
+            await SaveAndPublishAsync(parsed, cancellationToken);
+            _logger.LogInformation("Blob event processing completed. EventId={EventId} ReceiptId={ReceiptId}", eventGridEvent.Id, parsed.ReceiptId);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Blob event processing failed. EventId={EventId} BlobUrl={BlobUrl}", eventGridEvent.Id, blobUrl);
+            throw;
+        }
     }
 
     public async Task<ReceiptParsedEventPayload> ProcessLocalUploadAsync(
@@ -50,12 +63,25 @@ public sealed class ReceiptProcessingService
         string uploadedByUserId,
         CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.process.local_upload");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.local_upload.process");
         activity?.SetTag("receipt.source", source);
         activity?.SetTag("receipt.uploaded_by", uploadedByUserId);
 
-        var parsed = await _parser.ParseFromBinaryAsync(binaryData, source, cancellationToken);
-        return await SaveAndPublishAsync(parsed, cancellationToken, uploadedByUserId);
+        _logger.LogInformation("Local upload processing started. Source={Source} UploadedByUserId={UploadedByUserId}", source, uploadedByUserId);
+        try
+        {
+            var parsed = await _parser.ParseFromBinaryAsync(binaryData, source, cancellationToken);
+            var payload = await SaveAndPublishAsync(parsed, cancellationToken, uploadedByUserId);
+            _logger.LogInformation("Local upload processing completed. Source={Source} ReceiptId={ReceiptId}", source, payload.Id);
+            return payload;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Local upload processing failed. Source={Source}", source);
+            throw;
+        }
     }
 
     private async Task<ReceiptParsedEventPayload> SaveAndPublishAsync(

@@ -39,21 +39,36 @@ public sealed class CosmosReceiptRepository
 
     public async Task SaveAsync(ReceiptDocument document, CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.cosmos.save");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.cosmos.upsert");
         activity?.SetTag("receipt.id", document.Id);
+        _logger.LogInformation(
+            "Cosmos write started. ReceiptId={ReceiptId} DatabaseId={DatabaseId} ContainerId={ContainerId}",
+            document.Id,
+            _options.CosmosDatabaseId,
+            _options.CosmosContainerId);
 
         var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
-        var containerResponse = await database.CreateContainerIfNotExistsAsync(
-            id: _options.CosmosContainerId,
-            partitionKeyPath: "/Id",
-            cancellationToken: cancellationToken);
+        try
+        {
+            var containerResponse = await database.CreateContainerIfNotExistsAsync(
+                id: _options.CosmosContainerId,
+                partitionKeyPath: "/Id",
+                cancellationToken: cancellationToken);
 
-        var container = containerResponse.Container;
-        await container.UpsertItemAsync(
-            item: document,
-            partitionKey: new PartitionKey(document.Id),
-            cancellationToken: cancellationToken);
+            var container = containerResponse.Container;
+            await container.UpsertItemAsync(
+                item: document,
+                partitionKey: new PartitionKey(document.Id),
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Cosmos write failed. ReceiptId={ReceiptId}", document.Id);
+            throw;
+        }
 
-        _logger.LogInformation("Cosmos 저장 완료. ReceiptId={ReceiptId}", document.Id);
+        _logger.LogInformation("Cosmos write completed. ReceiptId={ReceiptId}", document.Id);
     }
 }

@@ -35,6 +35,7 @@
 - `ReceiptParser__DownstreamEventType`
 - `ReceiptParser__EnableLocalUploadTestEndpoint`
 - `OTEL_SERVICE_NAME`
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`
 
 토큰/키/연결 문자열은 코드에 하드코딩하지 않는다.
 
@@ -84,9 +85,10 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - 원문 OCR 결과(JSON)는 현재 저장하지 않는다. 필요 시 다시 도입하기 전 민감정보 처리 정책을 먼저 정의한다.
 
 ## Observability Guidelines
-- OpenTelemetry는 현재 로그/트레이싱 중심으로 사용한다.
+- `ILogger`는 사람이 읽는 애플리케이션 로그 중심으로 사용한다.
 - 주요 구간(이벤트 수신, 파싱, 저장, 이벤트 발행)에 activity를 남긴다.
-- 로컬에서는 콘솔 exporter 기반으로 동작 확인을 우선한다.
+- OpenTelemetry trace는 Azure Monitor / Application Insights export를 우선으로 한다.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`이 없으면 서비스는 계속 실행하고 console logging만 유지한다.
 
 ## Docker / CI Direction
 - 서비스 단독 빌드 및 실행이 가능해야 한다.

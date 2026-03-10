@@ -36,12 +36,24 @@ public sealed class DocumentIntelligenceReceiptParser
 
     public async Task<ParsedReceiptResult> ParseFromBlobAsync(string blobUrl, CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.parse.document_intelligence");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.document_intelligence.parse");
         activity?.SetTag("blob.url", blobUrl);
+        _logger.LogInformation("Receipt parsing started. SourceType=blob BlobUrl={BlobUrl}", blobUrl);
 
         var blobClient = new BlobClient(new Uri(blobUrl), new DefaultAzureCredential());
         await using var stream = new MemoryStream();
-        await blobClient.DownloadToAsync(stream, cancellationToken);
+        try
+        {
+            await blobClient.DownloadToAsync(stream, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Receipt blob download failed. BlobUrl={BlobUrl}", blobUrl);
+            throw;
+        }
+
         stream.Position = 0;
 
         var binaryData = BinaryData.FromStream(stream);
@@ -53,14 +65,25 @@ public sealed class DocumentIntelligenceReceiptParser
         string source,
         CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.parse.document_intelligence.binary");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.document_intelligence.parse_binary");
         activity?.SetTag("receipt.source", source);
 
-        var operation = await _documentClient.AnalyzeDocumentAsync(
-            WaitUntil.Completed,
-            _options.ModelId,
-            binaryData,
-            cancellationToken);
+        Operation<AnalyzeResult> operation;
+        try
+        {
+            operation = await _documentClient.AnalyzeDocumentAsync(
+                WaitUntil.Completed,
+                _options.ModelId,
+                binaryData,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Receipt parsing failed. Source={Source}", source);
+            throw;
+        }
 
         var result = operation.Value;
 
@@ -81,7 +104,7 @@ public sealed class DocumentIntelligenceReceiptParser
 
         var receiptId = Guid.NewGuid().ToString("N");
         _logger.LogInformation(
-            "영수증 파싱 완료. ReceiptId={ReceiptId}, Source={Source}, Merchant={MerchantName}, Total={Total}",
+            "Receipt parsing completed. ReceiptId={ReceiptId} Source={Source} MerchantName={MerchantName} Total={Total}",
             receiptId,
             source,
             merchantName,

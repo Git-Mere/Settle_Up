@@ -1,5 +1,6 @@
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
 
 sealed class SettleUpCommandHandler
 {
@@ -8,11 +9,15 @@ sealed class SettleUpCommandHandler
     private const string UploadModalPrefix = "settleup-upload-modal";
     private const string UploadFileCustomId = "receipt_image";
 
-    private readonly BlobImageUploader? _blobUploader;
+    private readonly BlobUploaderProvider _blobUploaderProvider;
+    private readonly ILogger<SettleUpCommandHandler> _logger;
 
-    public SettleUpCommandHandler(BlobImageUploader? blobUploader)
+    public SettleUpCommandHandler(
+        BlobUploaderProvider blobUploaderProvider,
+        ILogger<SettleUpCommandHandler> logger)
     {
-        _blobUploader = blobUploader;
+        _blobUploaderProvider = blobUploaderProvider;
+        _logger = logger;
     }
 
     public static SlashCommandProperties BuildCommand()
@@ -25,6 +30,8 @@ sealed class SettleUpCommandHandler
 
     public async Task<string> HandleSlashCommandAsync(SocketSlashCommand command)
     {
+        _logger.LogInformation("Settle-up command accepted. UserId={UserId} GuildId={GuildId}", command.User.Id, command.GuildId);
+
         var buttonCustomId = $"{UploadButtonPrefix}:{command.User.Id}";
         var component = new ComponentBuilder()
             .WithButton(
@@ -60,9 +67,10 @@ sealed class SettleUpCommandHandler
             return "forbidden_user";
         }
 
-        if (_blobUploader is null)
+        if (_blobUploaderProvider.Uploader is null)
         {
             await component.RespondAsync("Blob 저장소 설정이 비어 있어 업로드할 수 없습니다. 환경변수 설정을 확인해 주세요.", ephemeral: true);
+            _logger.LogWarning("Settle-up upload blocked because blob uploader is not configured. UserId={UserId} Reason={Reason}", component.User.Id, _blobUploaderProvider.InitializationError);
             return "blob_not_configured";
         }
 
@@ -102,9 +110,10 @@ sealed class SettleUpCommandHandler
             return "forbidden_user";
         }
 
-        if (_blobUploader is null)
+        if (_blobUploaderProvider.Uploader is null)
         {
             await modal.RespondAsync("Blob 저장소 설정이 비어 있어 업로드할 수 없습니다. 환경변수 설정을 확인해 주세요.", ephemeral: true);
+            _logger.LogWarning("Modal upload blocked because blob uploader is not configured. UserId={UserId} Reason={Reason}", modal.User.Id, _blobUploaderProvider.InitializationError);
             return "blob_not_configured";
         }
 
@@ -118,22 +127,31 @@ sealed class SettleUpCommandHandler
         BlobUploadResult uploadResult;
         try
         {
-            uploadResult = await _blobUploader.UploadReceiptImageAsync(attachment, modal.User.Id);
+            _logger.LogInformation("Blob upload started. UserId={UserId} FileName={FileName}", modal.User.Id, attachment.Filename);
+            uploadResult = await _blobUploaderProvider.Uploader.UploadReceiptImageAsync(attachment, modal.User.Id);
         }
         catch (InvalidOperationException invalidEx)
         {
             await modal.RespondAsync(invalidEx.Message, ephemeral: true);
+            _logger.LogWarning("Blob upload rejected. UserId={UserId} FileName={FileName} Reason={Reason}", modal.User.Id, attachment.Filename, invalidEx.Message);
             return "invalid_image";
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await modal.RespondAsync("Blob 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true);
+            _logger.LogError(ex, "Blob upload failed. UserId={UserId} FileName={FileName}", modal.User.Id, attachment.Filename);
             return "upload_error";
         }
 
-        using var activity = Telemetry.ActivitySource.StartActivity("discord.blob.upload.result");
+        using var activity = Telemetry.ActivitySource.StartActivity("discord.blob.upload");
         activity?.SetTag("blob.container", uploadResult.ContainerName);
         activity?.SetTag("blob.name", uploadResult.BlobName);
+
+        _logger.LogInformation(
+            "Blob upload completed. UserId={UserId} ContainerName={ContainerName} BlobName={BlobName}",
+            modal.User.Id,
+            uploadResult.ContainerName,
+            uploadResult.BlobName);
 
         await modal.RespondAsync(
             $"Blob 업로드 완료\nContainer: `{uploadResult.ContainerName}`\nBlob: `{uploadResult.BlobName}`\nURL: {uploadResult.BlobUri}",

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Azure;
 using receipt_parser.Services;
 
@@ -34,12 +33,8 @@ public static class LocalUploadParseTestEndpoint
             uploadedByUserId: "local-test-user",
             cancellationToken);
 
-        Console.WriteLine("===== Parsed Receipt Payload =====");
-        Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-        Console.WriteLine("===== End Parsed Receipt Payload =====");
-
         logger.LogInformation(
-            "로컬 업로드 테스트 처리 완료. FileName={FileName}, ReceiptId={ReceiptId}",
+            "Local upload test request completed. FileName={FileName} ReceiptId={ReceiptId}",
             file.FileName,
             payload.Id);
 

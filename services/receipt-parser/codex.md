@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션에서 `receipt-parser`는 "Cosmos 저장 경로 정렬 + 로컬/운영 처리 경로 통합 + 저장 스키마 정리"를 진행했다.
+이번 세션에서 `receipt-parser`는 "공통 observability 적용 + logging 정리 + 기존 파이프라인 안정화"를 진행했다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -34,14 +34,20 @@
   `POST /api/tests/local-upload-parse`를 활성화한다.
 - 테스트 엔드포인트도 운영 경로와 동일하게 파싱 후 Cosmos 저장 및 downstream 이벤트 발행 시도를 수행한다.
 - 테스트 엔드포인트 응답도 운영 이벤트와 동일한 payload 스키마를 반환한다.
-- 같은 payload를 콘솔에 pretty JSON으로 출력한다.
+- 요청 완료 로그는 `ILogger` 기반 structured log로 남긴다.
 
 6. Cosmos 인증 전략 정리
 - 로컬 테스트 편의를 위해 connection string과 Azure IAM(RBAC) 둘 다 지원한다.
 - `ReceiptParser__CosmosConnectionString`이 있으면 이를 우선 사용한다.
 - 없으면 `ReceiptParser__CosmosAccountEndpoint` + `DefaultAzureCredential`로 연결한다.
 
-7. 리팩토링
+7. Observability / logging 정리
+- `shared/SettleUp.Observability`를 참조하도록 변경.
+- console은 `ILogger` 기반 structured log 중심으로 정리하고 OpenTelemetry raw console dump는 제거했다.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 Azure Monitor exporter를 활성화한다.
+- 이벤트 수신, 파싱 시작/완료/실패, Cosmos upsert 시작/완료/실패, downstream publish 시작/완료/실패를 의미 있는 application log로 남긴다.
+
+8. 리팩토링
 - `ReceiptProcessingService`에서 문서/이벤트 payload 생성 로직을 분리:
   - `BuildReceiptDocument(...)`
   - `BuildReceiptParsedEventPayload(...)`
@@ -140,6 +146,7 @@ services/receipt-parser/
 - `ReceiptParser__DownstreamEventType`
 - `ReceiptParser__EnableLocalUploadTestEndpoint`
 - `OTEL_SERVICE_NAME` (기본값 `receipt-parser`)
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`
 
 Cosmos 인증:
 - `ReceiptParser__CosmosConnectionString`이 있으면 이를 우선 사용한다.
@@ -153,9 +160,11 @@ Cosmos 인증:
   - `<cwd>/services/receipt-parser/.env`
 
 ## Observability Notes
-- OpenTelemetry tracing이 활성화되어 있으며 콘솔 exporter를 사용한다.
+- console은 `ILogger` 기반 application log 중심으로 출력한다.
+- OpenTelemetry trace는 `shared/SettleUp.Observability` bootstrap에서 공통 구성한다.
 - ASP.NET Core / HttpClient instrumentation과 커스텀 activity source를 함께 사용한다.
-- 현재 운영 모니터링은 로그 중심으로 사용한다.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 Azure Monitor / Application Insights로 trace를 export한다.
+- connection string이 없으면 exporter 없이 서비스가 계속 실행된다.
 
 ## Known Decisions / Open Items
 1. Item-level 정확도

@@ -3,26 +3,27 @@
 ## Service Name
 - `discord-api`
 
-## Session Summary (up to commit `c60b605`)
-이번 세션에서 `discord-api`는 초기 스캐폴드 상태에서 다음 수준까지 진행됨.
+## Session Summary (updated)
+이번 세션에서 `discord-api`는 "host 기반 bootstrap 정리 + 공통 observability 적용 + structured logging 보강"을 진행했다.
 
-1. `src/DiscordApi/*` 중첩 구조를 평탄화함
-- 현재는 `services/discord-api/src/` 바로 아래에 프로젝트 엔트리 파일이 위치.
-- CI/Docker 경로도 함께 수정됨.
+1. 공통 observability bootstrap 적용
+- `shared/SettleUp.Observability`를 참조하도록 변경.
+- console logging은 `ILogger` 중심 단일 라인 출력으로 정리.
+- OpenTelemetry raw console exporter는 제거하고 Azure Monitor exporter를 환경 변수 기반으로 활성화한다.
 
-2. OpenTelemetry 기본 연결 추가
-- `Program.cs`에서 tracing provider 설정.
-- 주요 이벤트(`ready`, `slash`, `button`, `modal`, `message`)에 activity 태깅.
-- 참고: metric export는 개발 중 노이즈 때문에 `Program.cs`에서 제거함. `Telemetry.cs`의 metric 정의는 남겨둔 상태.
+2. Host / DI 구조 정리
+- `Program.cs`는 `HostApplicationBuilder` 기반으로 단순화.
+- `DiscordBotWorker`가 Discord 클라이언트 시작/중지와 이벤트 라우팅을 담당.
+- `BlobUploaderProvider`로 Blob 업로더 초기화 상태를 캡슐화.
 
 3. Blob 업로드 기능 추가
 - `/settle-up` 플로우에서 업로드 파일을 Azure Blob으로 저장.
 - `BlobImageUploader`로 로직 분리.
 - 허용 파일: `jpg`, `jpeg`, `png`.
 
-4. 명령어 핸들러 분리
-- `Program.cs`는 부트스트랩/이벤트 라우팅 중심으로 정리.
-- `pingtest`, `settle-up` 명령어를 별도 클래스 파일로 분리.
+4. 의미 있는 application log 보강
+- 봇 시작/정지, Discord ready, 명령 시작/완료/실패, Blob 업로드 시작/완료/실패를 `ILogger` structured log로 기록.
+- Discord 내부 로그도 `Console.WriteLine` 대신 `ILogger`로 매핑.
 
 5. `/settle-up` 상호작용 플로우 변경
 - 기존: slash 후 채널 메시지 업로드 대기
@@ -33,6 +34,8 @@
 services/discord-api/
 ├─ src/
 │  ├─ Program.cs
+│  ├─ DiscordBotWorker.cs
+│  ├─ BlobUploaderProvider.cs
 │  ├─ DiscordApi.csproj
 │  ├─ Commands/
 │  │  ├─ PingTestCommandHandler.cs
@@ -66,6 +69,7 @@ services/discord-api/
 
 선택:
 - `OTEL_SERVICE_NAME` (기본값: `discord-api`)
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`
 
 추가 참고:
 - `Program.cs`에서 `DotNetEnv`로 `../.env`를 로드함 (`Env.Load("../.env")`).
@@ -78,9 +82,11 @@ services/discord-api/
 - MIME은 확장자 기준으로 `image/jpeg` 또는 `image/png` 설정.
 
 ## Observability Notes
-- tracing은 활성화되어 있음 (`AddConsoleExporter`).
-- metrics는 현재 `Program.cs`에서 provider를 만들지 않음.
-  - 즉, `Telemetry.cs`에 metric instrument 정의는 있지만 실제 export/record 파이프라인은 비활성.
+- console은 `ILogger` 중심의 사람이 읽기 쉬운 structured log만 출력한다.
+- OpenTelemetry trace는 `shared/SettleUp.Observability` bootstrap으로 구성한다.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 Azure Monitor / Application Insights로 trace를 export한다.
+- connection string이 없으면 exporter 없이 계속 실행한다.
+- `System.Net.Http` raw activity dump는 더 이상 콘솔에 직접 출력하지 않는다.
 
 ## Known Decisions / Open Items
 1. Blob 자동 삭제 30일
@@ -103,5 +109,4 @@ services/discord-api/
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
 ## Last Verified State
-- latest commit in this session: `c60b605`
-- `main` -> `origin/main` 푸시 완료
+- `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공

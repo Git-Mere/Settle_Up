@@ -31,14 +31,16 @@ public sealed class ReceiptParsedEventPublisher
 
     public async Task PublishAsync(ReceiptParsedEventPayload payload, CancellationToken cancellationToken)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("receipt.event.publish");
+        using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.event.publish");
         activity?.SetTag("receipt.id", payload.Id);
 
         if (_publisherClient is null)
         {
-            _logger.LogWarning("Downstream Event Grid 설정이 없어 이벤트 발행을 건너뜁니다. ReceiptId={ReceiptId}", payload.Id);
+            _logger.LogWarning("Receipt parsed event publish skipped; downstream Event Grid is not configured. ReceiptId={ReceiptId}", payload.Id);
             return;
         }
+
+        _logger.LogInformation("Receipt parsed event publish started. ReceiptId={ReceiptId} EventType={EventType}", payload.Id, _options.DownstreamEventType);
 
         var eventGridEvent = new EventGridEvent(
             subject: $"receipts/{payload.Id}",
@@ -46,7 +48,18 @@ public sealed class ReceiptParsedEventPublisher
             dataVersion: "1.0",
             data: payload);
 
-        await _publisherClient.SendEventAsync(eventGridEvent, cancellationToken);
-        _logger.LogInformation("Downstream Event Grid 발행 완료. ReceiptId={ReceiptId}", payload.Id);
+        try
+        {
+            await _publisherClient.SendEventAsync(eventGridEvent, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Receipt parsed event publish failed. ReceiptId={ReceiptId}", payload.Id);
+            throw;
+        }
+
+        _logger.LogInformation("Receipt parsed event publish completed. ReceiptId={ReceiptId}", payload.Id);
     }
 }

@@ -2,19 +2,22 @@ using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Discord;
+using Microsoft.Extensions.Logging;
 
 sealed class BlobImageUploader
 {
     private readonly BlobContainerClient _containerClient;
     private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
 
-    private BlobImageUploader(BlobContainerClient containerClient, HttpClient httpClient)
+    private BlobImageUploader(BlobContainerClient containerClient, HttpClient httpClient, ILogger logger)
     {
         _containerClient = containerClient;
         _httpClient = httpClient;
+        _logger = logger;
     }
 
-    public static BlobImageUploader? CreateFromEnvironment(HttpClient httpClient, out string error)
+    public static BlobImageUploader? CreateFromEnvironment(HttpClient httpClient, ILogger logger, out string error)
     {
         var containerName = Environment.GetEnvironmentVariable("AZURE_BLOB_CONTAINER_NAME");
         if (string.IsNullOrWhiteSpace(containerName))
@@ -46,7 +49,7 @@ sealed class BlobImageUploader
             }
 
             error = string.Empty;
-            return new BlobImageUploader(containerClient, httpClient);
+            return new BlobImageUploader(containerClient, httpClient, logger);
         }
         catch (Exception ex)
         {
@@ -62,11 +65,13 @@ sealed class BlobImageUploader
             throw new InvalidOperationException("jpg/jpeg/png 파일만 업로드할 수 있습니다.");
         }
 
+        _logger.LogInformation("Ensuring blob container exists. ContainerName={ContainerName}", _containerClient.Name);
         await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
         var blobName = $"{DateTime.UtcNow:yyyy/MM/dd}/{userId}/{Guid.NewGuid():N}{extension}";
         var blobClient = _containerClient.GetBlobClient(blobName);
 
+        _logger.LogInformation("Uploading receipt image to blob storage. ContainerName={ContainerName} BlobName={BlobName} UserId={UserId}", _containerClient.Name, blobName, userId);
         using var response = await _httpClient.GetAsync(attachment.Url, cancellationToken);
         response.EnsureSuccessStatusCode();
 

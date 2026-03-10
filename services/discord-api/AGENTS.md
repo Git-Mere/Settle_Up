@@ -24,6 +24,7 @@ Examples:
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_GUILD_ID` if needed for development
 - `ASPNETCORE_ENVIRONMENT` if applicable
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` for Azure Monitor trace export
 
 Do not hardcode tokens.
 
@@ -33,6 +34,8 @@ Do not hardcode tokens.
 - Prefer small classes with clear responsibilities.
 - Use async/await correctly.
 - Log useful startup and error information.
+- Prefer `ILogger` for human-readable application logs.
+- Keep OpenTelemetry tracing for correlation/dependency tracing rather than raw console dumps.
 
 ## Discord-Specific Guidelines
 - Treat user input as untrusted.
@@ -54,6 +57,12 @@ For now, keep the implementation minimal but extensible.
 - Make sure the correct `.dll` is executed.
 - Verify build/publish output paths carefully.
 - Prefer multi-stage builds for production images.
+
+## Observability Guidelines
+- Console output should be driven by `ILogger` and stay human-readable.
+- Discord gateway state, command start/completion/failure, and blob upload results should be logged as structured application logs.
+- OpenTelemetry traces should be exported to Azure Monitor / Application Insights when `APPLICATIONINSIGHTS_CONNECTION_STRING` is configured.
+- If the connection string is missing, the service must continue to run with console logging only.
 
 ## Documentation Rule
 If the service structure changes significantly, update:
