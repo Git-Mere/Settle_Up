@@ -18,6 +18,11 @@ At the moment, prioritize:
 3. preparing CI/CD with GitHub Actions
 4. keeping the project structure clean for future services
 
+Current implementation notes:
+- `discord-api` and `receipt-parser` now share a common observability/bootstrap project under `shared/SettleUp.Observability`.
+- If shared code, project references, or Docker build contexts change, related workflow files in `.github/workflows/` must be reviewed together with service Dockerfiles.
+- Changes already captured under `docs/decisions/` should be treated as part of the current project state and included in commits when they reflect accepted direction.
+
 ## Architecture Direction
 This is a mono-repo that may contain multiple services, such as:
 - discord-api
@@ -77,3 +82,4 @@ If making changes:
 - avoid breaking future service separation
 - keep documentation in sync with structure
 - prefer minimal but correct implementations first
+- if build, Docker, or shared-project behavior changes, verify the matching workflow file as part of the same change

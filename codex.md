@@ -22,13 +22,12 @@ The system stores the image, parses the receipt, asks users to confirm item owne
 10. Results are returned through Discord.
 
 ## Current Implementation Stage
-The project is currently at the early foundation stage.
-The immediate focus is the Discord API service:
-- create the service
-- make it build and run correctly
-- containerize it
-- prepare CI/CD
-- keep the repository ready for additional services
+The project is currently in the early multi-service foundation stage.
+
+Current state:
+- `discord-api` runs as a Discord bot worker service with shared observability/bootstrap support.
+- `receipt-parser` runs as an HTTP service triggered by Blob/Event Grid and also uses the shared observability/bootstrap support.
+- both current services build locally and in Docker, and their CI workflows must stay aligned with shared project references.
 
 ## Repository Shape
 This repository is intended to be a mono-repo.
@@ -58,13 +57,17 @@ Example:
 - Documentation should stay practical and implementation-oriented.
 
 ## Immediate Priorities
-1. Discord API service scaffolding
-2. Dockerfile for Discord API service
-3. local environment variable setup
-4. GitHub Actions CI workflow
+1. keep Docker and GitHub Actions build contexts aligned with shared projects
+2. evolve `discord-api` from worker-only shape to worker + HTTP receiver shape
+3. change `receipt-parser` result delivery from downstream Event Grid to HTTP callback into `discord-api`
+4. keep observability/logging pattern consistent for future services
 5. future Azure deployment readiness
 
 ## Notes for Service Work
 When working inside a service directory, follow the local documentation there first.
 Root docs describe the overall system.
 Service docs describe local implementation details.
+
+Accepted cross-service next step:
+- per `docs/decisions/007-use-http-for-communication-between-parser-discordapi`, `discord-api` needs an HTTP endpoint to receive parsed receipt results
+- `receipt-parser` needs to send parsed results to `discord-api` over HTTP instead of the current downstream Event Grid path

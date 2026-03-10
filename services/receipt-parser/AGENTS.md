@@ -18,6 +18,7 @@
 - Cosmos DB 저장 구조를 단순하고 명확하게 유지
 - Downstream 이벤트 발행 연결
 - 로컬 `.env` 기반 실행/테스트 흐름 유지
+- 파싱 완료 결과를 `discord-api`로 HTTP 전송하는 구조로 전환 준비
 
 ## Expected Configuration
 환경별 설정과 민감값은 반드시 환경 변수로 관리한다.
@@ -99,9 +100,10 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 이 서비스는 향후 다음 상호작용을 전제로 설계한다:
 - Upstream: `discord-api`가 Blob 업로드 후 이벤트를 생성
 - Internal: `receipt-parser`가 분석 및 DB 저장
-- Downstream: 파싱 완료 이벤트를 발행하고 `discord-api`가 구독해 사용자 메시지를 생성
+- Downstream: 파싱 완료 결과를 `discord-api` HTTP endpoint로 전송해 사용자 메시지 생성을 트리거
 
 ## Documentation Rule
 서비스 구조/흐름/환경 변수가 바뀌면 다음 문서를 함께 업데이트한다:
 - `services/receipt-parser/codex.md`
 - 서비스 README(추가 시)
+- related workflow/Docker settings if shared project references or build contexts change

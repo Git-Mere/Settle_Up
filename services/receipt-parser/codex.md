@@ -92,6 +92,13 @@ services/receipt-parser/
 6. 파싱 완료 이벤트를 Event Grid로 발행
 7. `discord-api`가 해당 이벤트를 구독해 후속 메시지를 생성
 
+Accepted next-step flow:
+1. `discord-api`가 영수증 이미지를 업로드
+2. Blob 생성 이벤트가 `receipt-parser`를 트리거
+3. `receipt-parser`가 분석 및 저장 수행
+4. `receipt-parser`가 파싱 결과를 `discord-api` HTTP endpoint로 직접 전송
+5. `discord-api`가 Discord 후속 메시지를 생성
+
 로컬 테스트 플로우:
 1. `POST /api/tests/local-upload-parse`로 이미지 업로드
 2. `receipt-parser`가 Document Intelligence로 분석 수행
@@ -175,18 +182,19 @@ Cosmos 인증:
 - Event Grid payload 및 blob URL 검증 규칙을 더 엄격하게 정의할 필요가 있다.
 
 3. Downstream contract 확정
-- `SettleUp.ReceiptParsed` payload 스키마를 `discord-api` 소비 요구사항과 맞춰 고정해야 한다.
+- HTTP callback payload 스키마를 `discord-api` 소비 요구사항과 맞춰 고정해야 한다.
 
 4. Currency 추론 로직
 - `CurrencyCode`가 없을 때 `$` 기준으로 `USD`를 추론한다.
 - 다국적 통화 처리 정책은 추가 정의가 필요하다.
 
 ## Next Codex Session Quick Start
-1. `Services/DocumentIntelligenceReceiptParser.cs`에서 아이템/금액 파싱 정확도 개선
-2. `Services/ReceiptProcessingService.cs`에서 blob 경로 기반 `uploadedByUserId` 추출 규칙 고도화
-3. `Services/CosmosReceiptRepository.cs`에서 인덱싱/파티션 전략 재검토
-4. `Services/ReceiptParsedEventPublisher.cs`와 `shared/contracts`의 이벤트 스키마 정렬
-5. 변경 후 검증:
+1. `discord-api`가 받을 HTTP callback endpoint 계약을 먼저 확정
+2. `Services/ReceiptParsedEventPublisher.cs`를 HTTP client 기반 downstream sender로 교체
+3. `Services/ReceiptProcessingService.cs`에서 publish 단계가 HTTP callback을 사용하도록 전환
+4. `shared/contracts`에 parser -> discord-api callback DTO를 정리
+5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
+6. 변경 후 검증:
 - `dotnet build services/receipt-parser/receipt-parser.csproj -c Release`
 
 ## Last Verified State
@@ -196,3 +204,5 @@ Cosmos 인증:
 - 로컬 업로드 테스트 엔드포인트도 운영 경로와 동일하게 Cosmos 저장 및 downstream 발행 시도 수행
 - Cosmos 저장은 현재 컨테이너 계약(`/Id` partition key)에 맞춰 동작 확인
 - 빌드 검증: `dotnet build services/receipt-parser/receipt-parser.csproj -c Release --no-restore` 성공
+- Docker build succeeds only when repository-root build context is used so shared observability project is included
+- next planned change: replace downstream Event Grid publish path with HTTP callback into `discord-api`

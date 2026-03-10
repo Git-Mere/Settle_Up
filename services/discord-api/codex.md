@@ -88,6 +88,11 @@ services/discord-api/
 - connection string이 없으면 exporter 없이 계속 실행한다.
 - `System.Net.Http` raw activity dump는 더 이상 콘솔에 직접 출력하지 않는다.
 
+## Current Constraints / Next Step
+- 현재 서비스는 worker host라서 HTTP endpoint를 아직 노출하지 않는다.
+- `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 다음 작업은 `receipt-parser`가 결과를 POST할 수 있는 HTTP endpoint를 추가하는 것이다.
+- shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
+
 ## Known Decisions / Open Items
 1. Blob 자동 삭제 30일
 - 사용자 요청이 있었지만 해당 작업은 "취소" 요청으로 중단됨.
@@ -102,11 +107,14 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 ## Next Codex Session Quick Start
-1. `services/discord-api/src/Program.cs`에서 이벤트 라우팅 구조 확인
-2. `services/discord-api/src/Commands/SettleUpCommandHandler.cs`에서 업로드 흐름 수정
-3. `services/discord-api/src/Storage/BlobImageUploader.cs`에서 Blob 정책/메타데이터 관련 확장
-4. 변경 후 검증:
+1. `discord-api`를 worker + HTTP receiver 형태로 확장할 최소 구조 설계
+2. parser callback을 받을 endpoint / DTO 계약 확정
+3. Discord 후속 메시지 전송 흐름을 parser callback 입력 기준으로 연결
+4. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
+5. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
 ## Last Verified State
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
+- Docker build succeeds only when repository-root build context is used so shared observability project is included
+- next planned change: add HTTP receiver flow for parsed receipt callbacks from `receipt-parser`

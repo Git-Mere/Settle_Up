@@ -16,6 +16,7 @@ Right now, focus on:
 - making the service run locally
 - making the service run in Docker
 - preparing the service for CI/CD
+- preparing the service to receive parser results over HTTP
 
 ## Expected Configuration
 Use environment variables for all sensitive or environment-specific values.
@@ -52,6 +53,10 @@ In the future, this service may:
 
 For now, keep the implementation minimal but extensible.
 
+Accepted next step:
+- this service should evolve from worker-only to worker + HTTP receiver
+- `receipt-parser` will send parsed receipt results to `discord-api` over HTTP instead of downstream Event Grid
+
 ## Docker Guidelines
 - The container should start the bot reliably.
 - Make sure the correct `.dll` is executed.
@@ -68,3 +73,4 @@ For now, keep the implementation minimal but extensible.
 If the service structure changes significantly, update:
 - `services/discord-api/codex.md`
 - `services/discord-api/README.md`
+- related workflow/Docker settings if shared project references or build contexts change

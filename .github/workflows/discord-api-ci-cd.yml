@@ -48,7 +48,7 @@ jobs:
             --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --tag ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest \
             --platform linux/amd64 \
-            ${{ env.SERVICE_PATH }}
+            .
 
       - name: Login to ACR
         run: |

@@ -8,10 +8,12 @@ USER app
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG configuration=Release
 WORKDIR /src
-COPY ["receipt-parser.csproj", "./"]
-RUN dotnet restore "receipt-parser.csproj"
-COPY . .
-WORKDIR "/src/."
+COPY ["services/receipt-parser/receipt-parser.csproj", "services/receipt-parser/"]
+COPY ["shared/SettleUp.Observability/SettleUp.Observability.csproj", "shared/SettleUp.Observability/"]
+RUN dotnet restore "services/receipt-parser/receipt-parser.csproj"
+COPY ["services/receipt-parser/", "services/receipt-parser/"]
+COPY ["shared/SettleUp.Observability/", "shared/SettleUp.Observability/"]
+WORKDIR "/src/services/receipt-parser"
 RUN dotnet build "receipt-parser.csproj" -c $configuration -o /app/build
 
 FROM build AS publish
