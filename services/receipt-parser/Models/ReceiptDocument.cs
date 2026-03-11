@@ -19,6 +19,11 @@ public sealed class ReceiptDocument
     public decimal? Total { get; init; }
     public List<ParsedReceiptItem> Items { get; init; } = [];
     public ParseMetadata ParseMetadata { get; init; } = new("prebuilt-receipt", null, null);
+    public string NotificationStatus { get; init; } = NotificationStatuses.Pending;
+    public int NotificationAttemptCount { get; init; }
+    public DateTimeOffset? LastNotificationAttemptAt { get; init; }
+    public DateTimeOffset? NotificationSentAtUtc { get; init; }
+    public string? LastNotificationError { get; init; }
     public DateTimeOffset CreatedAtUtc { get; init; }
     public DateTimeOffset UpdatedAtUtc { get; init; }
 }

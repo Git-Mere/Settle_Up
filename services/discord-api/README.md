@@ -10,7 +10,7 @@ Discord API 서비스입니다.
 ## HTTP Endpoint
 
 - `POST /getting_draft`
-- JSON payload를 받아 로그를 남기고 `200 OK`를 반환합니다.
+- parser가 보내는 draft JSON payload를 받아 핵심 필드를 로그로 남기고 `200 OK`를 반환합니다.
 
 예시 응답:
 

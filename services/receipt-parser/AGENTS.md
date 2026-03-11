@@ -8,7 +8,7 @@
 - Azure Blob Storage의 영수증 이미지 조회
 - Azure Document Intelligence `prebuilt-receipt` 모델로 분석 수행
 - 파싱 결과를 정규화해 Cosmos DB에 저장
-- 파싱 완료 이벤트를 Downstream Event Grid로 발행
+- 파싱 완료 draft를 `discord-api` HTTP endpoint로 전송
 
 ## Current Scope
 현재 우선순위:
@@ -16,9 +16,9 @@
 - Document Intelligence 호출과 결과 파싱 안정화
 - 파싱 결과 JSON 스키마를 서비스 간 계약으로 일관되게 유지
 - Cosmos DB 저장 구조를 단순하고 명확하게 유지
-- Downstream 이벤트 발행 연결
+- `discord-api` HTTP callback 전송 안정화
 - 로컬 `.env` 기반 실행/테스트 흐름 유지
-- 파싱 완료 결과를 `discord-api`로 HTTP 전송하는 구조로 전환 준비
+- 파싱 완료 결과를 `discord-api`로 HTTP 전송하는 구조 유지
 
 ## Expected Configuration
 환경별 설정과 민감값은 반드시 환경 변수로 관리한다.
@@ -31,9 +31,8 @@
 - `ReceiptParser__CosmosAccountEndpoint`
 - `ReceiptParser__CosmosDatabaseId` (기본값: `draft-receipt-db`)
 - `ReceiptParser__CosmosContainerId` (기본값: `draft-receipt`)
-- `ReceiptParser__DownstreamEventGridTopicEndpoint`
-- `ReceiptParser__DownstreamEventGridTopicKey`
-- `ReceiptParser__DownstreamEventType`
+- `ReceiptParser__DiscordApiUrl`
+- `ReceiptParser__DiscordApiUrl_local_test`
 - `ReceiptParser__EnableLocalUploadTestEndpoint`
 - `OTEL_SERVICE_NAME`
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`
@@ -48,7 +47,7 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - 엔드포인트, 파싱, 저장소, 이벤트 발행 책임을 분리한다.
 - 입력(payload, 이벤트 타입, 필수 필드)을 명시적으로 검증한다.
 - 비동기 I/O는 `async/await`로 일관되게 처리한다.
-- 실패 지점(Document Intelligence, Cosmos, Event Grid)을 로그로 추적 가능하게 남긴다.
+- 실패 지점(Document Intelligence, Cosmos, discord-api callback)을 로그로 추적 가능하게 남긴다.
 - 모델/DTO는 서비스 경계를 드러내도록 명확한 이름을 사용한다.
 - 상태값/매핑 규칙은 상수 또는 전용 빌더 함수로 중복 없이 관리한다.
 
@@ -76,7 +75,7 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - `Microsoft.EventGrid.SubscriptionValidationEvent` 처리를 반드시 지원한다.
 - 지원하지 않는 이벤트 타입은 안전하게 스킵한다.
 - `Microsoft.Storage.BlobCreated`에서 `url` 추출 실패 시 저장/발행을 진행하지 않는다.
-- 다운스트림 발행 설정이 없으면 경고 로그를 남기고 발행은 건너뛴다.
+- `discord-api` callback URL 설정이 없으면 전송을 진행하지 않는다.
 - Blob 경로 패턴에서 `uploadedByUserId` 추출 규칙을 바꿀 경우 `discord-api`와 함께 계약을 갱신한다.
 
 ## Security Guidelines

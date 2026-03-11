@@ -14,9 +14,14 @@ builder.Logging.AddSettleUpLogging(builder.Configuration);
 builder.Services.Configure<ReceiptParserOptions>(
     builder.Configuration.GetSection(ReceiptParserOptions.SectionName));
 
+builder.Services.AddHttpClient("discord-api-draft", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
 builder.Services.AddSingleton<DocumentIntelligenceReceiptParser>();
 builder.Services.AddSingleton<CosmosReceiptRepository>();
-builder.Services.AddSingleton<ReceiptParsedEventPublisher>();
+builder.Services.AddSingleton<DiscordApiDraftClient>();
 builder.Services.AddSingleton<ReceiptProcessingService>();
 
 var serviceName = builder.Configuration["OTEL_SERVICE_NAME"] ?? "receipt-parser";

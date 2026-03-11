@@ -19,7 +19,8 @@
 
 3. HTTP receiver 추가
 - `POST /getting_draft` endpoint를 추가했다.
-- JSON payload를 받아 기본 로그를 남기고 `200 OK` + `{ "message": "draft received" }`를 반환한다.
+- `ReceiptDraftNotificationRequest` DTO로 payload를 받는다.
+- receipt id / user id / merchant / item count를 structured log로 남기고 `200 OK` + `{ "message": "draft received" }`를 반환한다.
 - 기본 리슨 주소는 `http://0.0.0.0:5000`이며 `ASPNETCORE_URLS`로 오버라이드 가능하다.
 
 4. Blob 업로드 기능 추가
@@ -47,6 +48,8 @@ services/discord-api/
 │  ├─ Commands/
 │  │  ├─ PingTestCommandHandler.cs
 │  │  └─ SettleUpCommandHandler.cs
+│  ├─ Models/
+│  │  └─ ReceiptDraftNotificationRequest.cs
 │  ├─ Storage/
 │  │  └─ BlobImageUploader.cs
 │  └─ Observability/
@@ -59,7 +62,7 @@ services/discord-api/
 ## Runtime Flow (current)
 ### HTTP receiver
 - Kestrel이 기본적으로 `0.0.0.0:5000`에서 리슨한다.
-- `POST /getting_draft`로 JSON payload를 받으면 로그를 남기고 성공 응답을 반환한다.
+- `POST /getting_draft`로 parser callback payload를 받으면 핵심 필드만 structured log로 남기고 성공 응답을 반환한다.
 
 ### `/pingtest`
 - 즉시 ephemeral 응답: `pong! slash command 정상 작동 중입니다.`
@@ -119,9 +122,9 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 ## Next Codex Session Quick Start
-1. `/getting_draft` request/response DTO 계약 확정
-2. Discord 후속 메시지 전송 흐름을 parser callback 입력 기준으로 연결
-3. 인증/검증 규칙 추가
+1. Discord 후속 메시지 전송 흐름을 parser callback 입력 기준으로 연결
+2. 인증/검증 규칙 추가
+3. 요청 payload 검증/에러 응답 강화
 4. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
 5. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
@@ -129,4 +132,4 @@ services/discord-api/
 ## Last Verified State
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
-- next planned change: replace placeholder `/getting_draft` payload handling with parser callback contract + Discord follow-up flow
+- next planned change: connect received draft payload to Discord follow-up messaging flow

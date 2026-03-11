@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션에서 `receipt-parser`는 "공통 observability 적용 + logging 정리 + 기존 파이프라인 안정화"를 진행했다.
+이번 세션에서 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가"를 진행했다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -23,17 +23,21 @@
 - 저장 문서는 아래 계약 필드를 따른다:
   - `id`, `status`, `blobUrl`, `uploadedByUserId`, `merchantName`, `transactionDate`
   - `currency`, `subtotal`, `tax`, `total`, `items`, `parseMetadata`
+  - `notificationStatus`, `notificationAttemptCount`, `lastNotificationAttemptAt`, `notificationSentAtUtc`, `lastNotificationError`
   - `createdAtUtc`, `updatedAtUtc`
 
-4. 파싱 완료 이벤트 발행
-- Downstream Event Grid topic 설정이 있으면 `SettleUp.ReceiptParsed` 이벤트를 발행한다.
-- 설정이 없으면 경고 로그만 남기고 발행은 건너뛴다.
+4. discord-api HTTP 전송
+- 파싱/저장 후 `POST /getting_draft`로 초안 payload를 JSON으로 전송한다.
+- 운영 경로는 `ReceiptParser__DiscordApiUrl`, 로컬 업로드 테스트 경로는 `ReceiptParser__DiscordApiUrl_local_test`를 사용한다.
+- 저장 문서(`ReceiptDocument`)와 outbound payload(`DiscordDraftNotificationPayload`)는 분리했다.
+- retry는 최대 3회까지 수행하며, retryable 대상은 네트워크 오류/timeout/5xx/408/429다.
+- 400/401/403/404 등 non-transient 4xx는 재시도하지 않는다.
 
 5. 로컬 테스트 보조 엔드포인트
 - `ReceiptParser__EnableLocalUploadTestEndpoint=true`일 때
   `POST /api/tests/local-upload-parse`를 활성화한다.
-- 테스트 엔드포인트도 운영 경로와 동일하게 파싱 후 Cosmos 저장 및 downstream 이벤트 발행 시도를 수행한다.
-- 테스트 엔드포인트 응답도 운영 이벤트와 동일한 payload 스키마를 반환한다.
+- 테스트 엔드포인트도 운영 경로와 동일하게 파싱 후 Cosmos 저장 및 discord-api HTTP 전송 시도를 수행한다.
+- 테스트 엔드포인트 응답도 discord-api로 보내는 outbound payload 스키마를 반환한다.
 - 요청 완료 로그는 `ILogger` 기반 structured log로 남긴다.
 
 6. Cosmos 인증 전략 정리
@@ -45,13 +49,13 @@
 - `shared/SettleUp.Observability`를 참조하도록 변경.
 - console은 `ILogger` 기반 structured log 중심으로 정리하고 OpenTelemetry raw console dump는 제거했다.
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 Azure Monitor exporter를 활성화한다.
-- 이벤트 수신, 파싱 시작/완료/실패, Cosmos upsert 시작/완료/실패, downstream publish 시작/완료/실패를 의미 있는 application log로 남긴다.
+- 이벤트 수신, 파싱 시작/완료/실패, Cosmos upsert 시작/완료/실패, discord-api send 시작/성공/재시도/최종 실패를 의미 있는 application log로 남긴다.
 
 8. 리팩토링
-- `ReceiptProcessingService`에서 문서/이벤트 payload 생성 로직을 분리:
+- `ReceiptProcessingService`에서 문서/outbound payload 생성 로직을 분리:
   - `BuildReceiptDocument(...)`
-  - `BuildReceiptParsedEventPayload(...)`
-- 공통 후처리 로직을 `SaveAndPublishAsync(...)`로 묶어 로컬/운영 경로가 같은 저장 및 발행 흐름을 사용한다.
+-  - `BuildDiscordDraftNotificationPayload(...)`
+- 공통 후처리 로직을 `SaveAndSendDraftAsync(...)`로 묶어 로컬/운영 경로가 같은 저장 및 전송 흐름을 사용한다.
 - `EventGridWebhookEndpoint`에서 payload 파싱을 `TryParseEventsAsync(...)`로 분리해 가독성 개선.
 - 원문 OCR 결과(`rawResultJson`) 저장을 제거해 Cosmos 저장 문서를 정규화 필드만 포함하도록 정리했다.
 
@@ -70,13 +74,13 @@ services/receipt-parser/
 │  ├─ ReceiptProcessingService.cs
 │  ├─ DocumentIntelligenceReceiptParser.cs
 │  ├─ CosmosReceiptRepository.cs
-│  └─ ReceiptParsedEventPublisher.cs
+│  └─ DiscordApiDraftClient.cs
 ├─ Models/
 │  ├─ ParsedReceiptResult.cs
 │  ├─ ParsedReceiptItem.cs
 │  ├─ ParseMetadata.cs
 │  ├─ ReceiptDocument.cs
-│  └─ ReceiptParsedEventPayload.cs
+│  └─ DiscordDraftNotificationPayload.cs
 ├─ Observability/
 │  └─ Telemetry.cs
 └─ tests/
@@ -88,23 +92,18 @@ services/receipt-parser/
 2. Blob 생성 이벤트가 Event Grid를 통해 `receipt-parser`로 전달
 3. `receipt-parser`가 이벤트에서 blob URL 추출
 4. Document Intelligence(`prebuilt-receipt`)로 분석 수행
-5. 결과를 내부 모델로 파싱하고 Cosmos DB 저장
-6. 파싱 완료 이벤트를 Event Grid로 발행
-7. `discord-api`가 해당 이벤트를 구독해 후속 메시지를 생성
-
-Accepted next-step flow:
-1. `discord-api`가 영수증 이미지를 업로드
-2. Blob 생성 이벤트가 `receipt-parser`를 트리거
-3. `receipt-parser`가 분석 및 저장 수행
-4. `receipt-parser`가 파싱 결과를 `discord-api` HTTP endpoint로 직접 전송
-5. `discord-api`가 Discord 후속 메시지를 생성
+5. 결과를 내부 모델로 파싱하고 Cosmos DB에 `notificationStatus=Pending` 상태로 저장
+6. `receipt-parser`가 `discord-api`의 `/getting_draft`로 HTTP POST 전송
+7. 성공 시 Cosmos DB 문서를 `notificationStatus=Sent`로 업데이트
+8. 실패 시 pending 상태와 시도 횟수/오류를 남겨 재처리 가능하게 유지
 
 로컬 테스트 플로우:
 1. `POST /api/tests/local-upload-parse`로 이미지 업로드
 2. `receipt-parser`가 Document Intelligence로 분석 수행
-3. 운영 경로와 동일하게 Cosmos DB 저장
-4. Downstream Event Grid 발행 설정이 있으면 동일하게 발행 시도
-5. 동일한 payload 스키마를 응답으로 반환
+3. Cosmos DB에 pending 상태로 저장
+4. `ReceiptParser__DiscordApiUrl_local_test`를 사용해 `discord-api`로 HTTP 전송
+5. 성공 시 sent 상태로 업데이트
+6. 동일한 outbound payload 스키마를 응답으로 반환
 
 샘플 payload 형태:
 ```json
@@ -148,9 +147,8 @@ Accepted next-step flow:
 - `ReceiptParser__ModelId` (기본값 `prebuilt-receipt`)
 - `ReceiptParser__CosmosDatabaseId` (기본값 `draft-receipt-db`)
 - `ReceiptParser__CosmosContainerId` (기본값 `draft-receipt`)
-- `ReceiptParser__DownstreamEventGridTopicEndpoint`
-- `ReceiptParser__DownstreamEventGridTopicKey`
-- `ReceiptParser__DownstreamEventType`
+- `ReceiptParser__DiscordApiUrl`
+- `ReceiptParser__DiscordApiUrl_local_test`
 - `ReceiptParser__EnableLocalUploadTestEndpoint`
 - `OTEL_SERVICE_NAME` (기본값 `receipt-parser`)
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`
@@ -182,27 +180,26 @@ Cosmos 인증:
 - Event Grid payload 및 blob URL 검증 규칙을 더 엄격하게 정의할 필요가 있다.
 
 3. Downstream contract 확정
-- HTTP callback payload 스키마를 `discord-api` 소비 요구사항과 맞춰 고정해야 한다.
+- HTTP callback payload 스키마를 `discord-api` 소비 요구사항과 맞춰 더 엄격히 검증할 필요가 있다.
 
 4. Currency 추론 로직
 - `CurrencyCode`가 없을 때 `$` 기준으로 `USD`를 추론한다.
 - 다국적 통화 처리 정책은 추가 정의가 필요하다.
 
 ## Next Codex Session Quick Start
-1. `discord-api`가 받을 HTTP callback endpoint 계약을 먼저 확정
-2. `Services/ReceiptParsedEventPublisher.cs`를 HTTP client 기반 downstream sender로 교체
-3. `Services/ReceiptProcessingService.cs`에서 publish 단계가 HTTP callback을 사용하도록 전환
-4. `shared/contracts`에 parser -> discord-api callback DTO를 정리
-5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
-6. 변경 후 검증:
+1. discord-api callback 인증/검증 규칙 추가
+2. 전송 실패 문서 재처리 경로 설계
+3. discord-api 후속 Discord 메시지 생성과 callback 소비 연결
+4. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
+5. 변경 후 검증:
 - `dotnet build services/receipt-parser/receipt-parser.csproj -c Release`
 
 ## Last Verified State
-- 로컬 코드 기준으로 Event Grid -> Document Intelligence -> Cosmos -> Downstream Event Grid 파이프라인 코드가 존재
-- 표준 파싱 payload 스키마(`id/status/items/parseMetadata/timestamps`) 적용 완료
+- 로컬 코드 기준으로 Event Grid -> Document Intelligence -> Cosmos -> discord-api HTTP callback 파이프라인 코드가 존재
+- 저장 문서와 outbound HTTP payload를 분리했다.
 - 원문 OCR 결과(`rawResultJson`)는 저장하지 않음
-- 로컬 업로드 테스트 엔드포인트도 운영 경로와 동일하게 Cosmos 저장 및 downstream 발행 시도 수행
+- 로컬 업로드 테스트 엔드포인트도 운영 경로와 동일하게 Cosmos 저장 및 discord-api HTTP 전송 시도 수행
 - Cosmos 저장은 현재 컨테이너 계약(`/Id` partition key)에 맞춰 동작 확인
-- 빌드 검증: `dotnet build services/receipt-parser/receipt-parser.csproj -c Release --no-restore` 성공
+- 빌드 검증: `dotnet build services/receipt-parser/receipt-parser.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
-- next planned change: replace downstream Event Grid publish path with HTTP callback into `discord-api`
+- next planned change: add retry-safe reprocessing/authentication around discord-api callback delivery

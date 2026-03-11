@@ -1,6 +1,6 @@
 namespace receipt_parser.Models;
 
-public sealed record ReceiptParsedEventPayload(
+public sealed record DiscordDraftNotificationPayload(
     string Id,
     string BlobUrl,
     string Status,

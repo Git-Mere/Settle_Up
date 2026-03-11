@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace receipt_parser.Configuration;
 
 public sealed class ReceiptParserOptions
@@ -12,10 +14,10 @@ public sealed class ReceiptParserOptions
     public string? CosmosAccountEndpoint { get; init; }
     public string CosmosDatabaseId { get; init; } = "draft-receipt-db";
     public string CosmosContainerId { get; init; } = "draft-receipt";
+    public string? DiscordApiUrl { get; init; }
 
-    public string? DownstreamEventGridTopicEndpoint { get; init; }
-    public string? DownstreamEventGridTopicKey { get; init; }
-    public string DownstreamEventType { get; init; } = "SettleUp.ReceiptParsed";
+    [ConfigurationKeyName("DiscordApiUrl_local_test")]
+    public string? DiscordApiUrlLocalTest { get; init; }
 
     public bool EnableLocalUploadTestEndpoint { get; init; } = false;
 }

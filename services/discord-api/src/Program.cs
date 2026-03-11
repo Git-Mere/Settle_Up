@@ -2,7 +2,6 @@ using Discord;
 using Discord.WebSocket;
 using DotNetEnv;
 using Microsoft.Extensions.DependencyInjection;
-using System.Text.Json;
 using SettleUp.Observability;
 
 LoadDotEnvIfExists();
@@ -37,11 +36,7 @@ builder.Services.AddHostedService<DiscordBotWorker>();
 
 var app = builder.Build();
 
-app.MapPost("/getting_draft", (JsonElement payload, ILogger<Program> logger) =>
-{
-    logger.LogInformation("Received getting_draft request. Payload={Payload}", payload);
-    return Results.Ok(new { message = "draft received" });
-});
+app.MapPost("/getting_draft", GettingDraftEndpoint.HandleAsync);
 
 await app.RunAsync();
 

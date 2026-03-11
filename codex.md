@@ -26,7 +26,7 @@ The project is currently in the early multi-service foundation stage.
 
 Current state:
 - `discord-api` runs as a Discord bot worker service with shared observability/bootstrap support.
-- `receipt-parser` runs as an HTTP service triggered by Blob/Event Grid and also uses the shared observability/bootstrap support.
+- `receipt-parser` runs as an HTTP service triggered by Blob/Event Grid, stores draft receipts in Cosmos DB, and sends parsed drafts to `discord-api` over HTTP.
 - both current services build locally and in Docker, and their CI workflows must stay aligned with shared project references.
 
 ## Repository Shape
@@ -58,8 +58,8 @@ Example:
 
 ## Immediate Priorities
 1. keep Docker and GitHub Actions build contexts aligned with shared projects
-2. evolve `discord-api` from worker-only shape to worker + HTTP receiver shape
-3. change `receipt-parser` result delivery from downstream Event Grid to HTTP callback into `discord-api`
+2. wire the received draft payload in `discord-api` into the next Discord follow-up flow
+3. harden `receipt-parser` -> `discord-api` HTTP delivery with validation/reprocessing as needed
 4. keep observability/logging pattern consistent for future services
 5. future Azure deployment readiness
 
@@ -68,6 +68,6 @@ When working inside a service directory, follow the local documentation there fi
 Root docs describe the overall system.
 Service docs describe local implementation details.
 
-Accepted cross-service next step:
-- per `docs/decisions/007-use-http-for-communication-between-parser-discordapi`, `discord-api` needs an HTTP endpoint to receive parsed receipt results
-- `receipt-parser` needs to send parsed results to `discord-api` over HTTP instead of the current downstream Event Grid path
+Accepted cross-service current state:
+- per `docs/decisions/007-use-http-for-communication-between-parser-discordapi`, `discord-api` now exposes an HTTP endpoint to receive parsed receipt drafts
+- `receipt-parser` now sends parsed results to `discord-api` over HTTP instead of downstream Event Grid
