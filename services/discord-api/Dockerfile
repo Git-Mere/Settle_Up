@@ -9,8 +9,11 @@ COPY ["services/discord-api/", "services/discord-api/"]
 COPY ["shared/SettleUp.Observability/", "shared/SettleUp.Observability/"]
 RUN dotnet publish "services/discord-api/src/DiscordApi.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:5000
+EXPOSE 5000
 
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "DiscordApi.dll"]

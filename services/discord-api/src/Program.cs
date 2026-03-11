@@ -2,13 +2,14 @@ using Discord;
 using Discord.WebSocket;
 using DotNetEnv;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using System.Text.Json;
 using SettleUp.Observability;
 
 LoadDotEnvIfExists();
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddSettleUpLogging(builder.Configuration);
+builder.WebHost.UseUrls(builder.Configuration["ASPNETCORE_URLS"] ?? "http://0.0.0.0:5000");
 
 var serviceName = builder.Configuration["OTEL_SERVICE_NAME"] ?? "discord-api";
 var serviceVersion = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0";
@@ -20,7 +21,7 @@ builder.Services.AddSettleUpObservability(
         ServiceName = serviceName,
         ServiceVersion = serviceVersion,
         ActivitySourceName = Telemetry.ActivitySourceName,
-        IncludeAspNetCoreInstrumentation = false
+        IncludeAspNetCoreInstrumentation = true
     });
 
 builder.Services.AddSingleton(new DiscordSocketConfig
@@ -34,7 +35,15 @@ builder.Services.AddSingleton<SettleUpCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
 builder.Services.AddHostedService<DiscordBotWorker>();
 
-await builder.Build().RunAsync();
+var app = builder.Build();
+
+app.MapPost("/getting_draft", (JsonElement payload, ILogger<Program> logger) =>
+{
+    logger.LogInformation("Received getting_draft request. Payload={Payload}", payload);
+    return Results.Ok(new { message = "draft received" });
+});
+
+await app.RunAsync();
 
 static void LoadDotEnvIfExists()
 {
