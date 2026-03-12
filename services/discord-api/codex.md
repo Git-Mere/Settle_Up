@@ -23,17 +23,22 @@
 - receipt id / user id / merchant / item count를 structured log로 남기고 `200 OK` + `{ "message": "draft received" }`를 반환한다.
 - 기본 리슨 주소는 `http://0.0.0.0:5000`이며 `ASPNETCORE_URLS`로 오버라이드 가능하다.
 
-4. Blob 업로드 기능 추가
+4. 테스트용 draft UI 명령 추가
+- `/test` slash command를 추가했다.
+- `src/TestData/sample-receipt-draft.json`을 로드해 receipt selection UI 세션을 생성한다.
+- 실행 사용자 id를 `uploadedByUserId`로 덮어써 해당 사용자 DM에 테스트 UI를 보낸다.
+
+5. Blob 업로드 기능 추가
 - `/settle-up` 플로우에서 업로드 파일을 Azure Blob으로 저장.
 - `BlobImageUploader`로 로직 분리.
 - 허용 파일: `jpg`, `jpeg`, `png`.
 
-5. 의미 있는 application log 보강
+6. 의미 있는 application log 보강
 - 봇 시작/정지, Discord ready, 명령 시작/완료/실패, Blob 업로드 시작/완료/실패를 `ILogger` structured log로 기록.
 - Discord 내부 로그도 `Console.WriteLine` 대신 `ILogger`로 매핑.
 - `/getting_draft` 호출도 `ILogger`로 기록한다.
 
-6. `/settle-up` 상호작용 플로우 변경
+7. `/settle-up` 상호작용 플로우 변경
 - 기존: slash 후 채널 메시지 업로드 대기
 - 현재: slash -> 버튼 표시 -> 버튼 클릭 -> 모달(파일 업로드 컴포넌트) -> Blob 업로드
 
@@ -47,11 +52,14 @@ services/discord-api/
 │  ├─ DiscordApi.csproj
 │  ├─ Commands/
 │  │  ├─ PingTestCommandHandler.cs
-│  │  └─ SettleUpCommandHandler.cs
+│  │  ├─ SettleUpCommandHandler.cs
+│  │  └─ TestReceiptCommandHandler.cs
 │  ├─ Models/
 │  │  └─ ReceiptDraftNotificationRequest.cs
 │  ├─ Storage/
 │  │  └─ BlobImageUploader.cs
+│  ├─ TestData/
+│  │  └─ sample-receipt-draft.json
 │  └─ Observability/
 │     └─ Telemetry.cs
 ├─ Dockerfile
@@ -63,6 +71,13 @@ services/discord-api/
 ### HTTP receiver
 - Kestrel이 기본적으로 `0.0.0.0:5000`에서 리슨한다.
 - `POST /getting_draft`로 parser callback payload를 받으면 핵심 필드만 structured log로 남기고 성공 응답을 반환한다.
+
+### `/test`
+1. slash 실행
+2. 샘플 draft JSON 로드
+3. 실행 사용자 id로 payload 덮어쓰기
+4. 기존 receipt session/UI 생성 경로 재사용
+5. 실행 사용자 DM에 테스트 UI 전송
 
 ### `/pingtest`
 - 즉시 ephemeral 응답: `pong! slash command 정상 작동 중입니다.`
@@ -122,11 +137,12 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 ## Next Codex Session Quick Start
-1. Discord 후속 메시지 전송 흐름을 parser callback 입력 기준으로 연결
-2. 인증/검증 규칙 추가
-3. 요청 payload 검증/에러 응답 강화
-4. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
-5. 변경 후 검증:
+1. confirm 버튼 로직 연결
+2. 선택 세션 영속화 전략 추가
+3. 인증/검증 규칙 추가
+4. 요청 payload 검증/에러 응답 강화
+5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
+6. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
 ## Last Verified State

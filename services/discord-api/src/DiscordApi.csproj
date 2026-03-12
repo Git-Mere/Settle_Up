@@ -18,4 +18,10 @@
     <ProjectReference Include="../../../shared/SettleUp.Observability/SettleUp.Observability.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="TestData/sample-receipt-draft.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

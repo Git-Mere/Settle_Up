@@ -4,6 +4,7 @@ public static class GettingDraftEndpoint
 {
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
+        ReceiptInteractionService receiptInteractionService,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -34,7 +35,17 @@ public static class GettingDraftEndpoint
                 return Results.NotFound(ApiErrorResponse.DraftNotFound($"Draft not found for draftId '{draftId}'."));
             }
 
-            logger.LogInformation("Draft found. draftId={DraftId}", draftId);
+            var ocrItems = ReceiptItemMergeService.BuildOcrItems(payload.Items);
+            var mergedItems = ReceiptItemMergeService.MergeForUi(ocrItems);
+
+            logger.LogInformation(
+                "Draft found. draftId={DraftId} RawItemCount={RawItemCount} MergedItemCount={MergedItemCount}",
+                draftId,
+                ocrItems.Count,
+                mergedItems.Count);
+
+            await receiptInteractionService.CreateOrUpdateSessionFromDraftAsync(payload, cancellationToken);
+
             return Results.Ok(new { message = "draft received" });
         }
         catch (JsonException ex)

@@ -7,6 +7,12 @@ Discord API 서비스입니다.
 - Discord 봇 워커 실행
 - HTTP endpoint 수신 (`POST /getting_draft`)
 
+추가로 테스트용 slash command를 제공합니다.
+
+- `/test`
+- 저장된 샘플 draft JSON으로 receipt selection UI 세션을 생성합니다.
+- 실행한 사용자에게 DM으로 테스트 UI가 전송됩니다.
+
 ## HTTP Endpoint
 
 - `POST /getting_draft`
@@ -24,6 +30,11 @@ Discord API 서비스입니다.
 
 - `http://0.0.0.0:5000`
 - 필요하면 `ASPNETCORE_URLS` 환경 변수로 오버라이드할 수 있습니다.
+
+## Test Data
+
+- 테스트 draft JSON 위치: `services/discord-api/src/TestData/sample-receipt-draft.json`
+- `/test` 명령은 이 파일을 로드한 뒤 `uploadedByUserId`를 slash command 실행 사용자로 덮어씁니다.
 
 ## Environment Variables
 

@@ -30,8 +30,12 @@ builder.Services.AddSingleton(new DiscordSocketConfig
 builder.Services.AddSingleton(sp => new DiscordSocketClient(sp.GetRequiredService<DiscordSocketConfig>()));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<BlobUploaderProvider>();
+builder.Services.AddSingleton<ReceiptSessionStore>();
+builder.Services.AddSingleton<ReceiptDraftTestDataLoader>();
+builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
+builder.Services.AddSingleton<TestReceiptCommandHandler>();
 builder.Services.AddHostedService<DiscordBotWorker>();
 
 var app = builder.Build();

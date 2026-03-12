@@ -9,6 +9,7 @@ sealed class DiscordBotWorker : IHostedService
     private readonly DiscordSocketClient _client;
     private readonly ILogger<DiscordBotWorker> _logger;
     private readonly PingTestCommandHandler _pingTestHandler;
+    private readonly TestReceiptCommandHandler _testReceiptHandler;
     private readonly SettleUpCommandHandler _settleUpHandler;
     private readonly string? _token;
     private bool _commandRegistered;
@@ -17,21 +18,28 @@ sealed class DiscordBotWorker : IHostedService
         DiscordSocketClient client,
         ILogger<DiscordBotWorker> logger,
         PingTestCommandHandler pingTestHandler,
-        SettleUpCommandHandler settleUpHandler)
+        TestReceiptCommandHandler testReceiptHandler,
+        SettleUpCommandHandler settleUpHandler,
+        ReceiptInteractionService receiptInteractionService)
     {
         _client = client;
         _logger = logger;
         _pingTestHandler = pingTestHandler;
+        _testReceiptHandler = testReceiptHandler;
         _settleUpHandler = settleUpHandler;
+        _receiptInteractionService = receiptInteractionService;
         _token = Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
 
         _client.Log += HandleDiscordLogAsync;
         _client.Ready += HandleReadyAsync;
         _client.SlashCommandExecuted += HandleSlashCommandExecutedAsync;
         _client.ButtonExecuted += HandleButtonExecutedAsync;
+        _client.SelectMenuExecuted += HandleSelectMenuExecutedAsync;
         _client.ModalSubmitted += HandleModalSubmittedAsync;
         _client.MessageReceived += HandleMessageReceivedAsync;
     }
+
+    private readonly ReceiptInteractionService _receiptInteractionService;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -85,10 +93,11 @@ sealed class DiscordBotWorker : IHostedService
 
         await _client.Rest.CreateGlobalCommand(SettleUpCommandHandler.BuildCommand());
         await _client.Rest.CreateGlobalCommand(PingTestCommandHandler.BuildCommand());
+        await _client.Rest.CreateGlobalCommand(TestReceiptCommandHandler.BuildCommand());
 
         _commandRegistered = true;
-        activity?.SetTag("discord.commands.registered", 2);
-        _logger.LogInformation("Discord ready; registered {CommandCount} commands.", 2);
+        activity?.SetTag("discord.commands.registered", 3);
+        _logger.LogInformation("Discord ready; registered {CommandCount} commands.", 3);
     }
 
     private async Task HandleSlashCommandExecutedAsync(SocketSlashCommand command)
@@ -115,6 +124,10 @@ sealed class DiscordBotWorker : IHostedService
             else if (string.Equals(command.Data.Name, PingTestCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _pingTestHandler.HandleSlashCommandAsync(command);
+            }
+            else if (string.Equals(command.Data.Name, TestReceiptCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            {
+                status = await _testReceiptHandler.HandleSlashCommandAsync(command);
             }
             else
             {
@@ -155,7 +168,8 @@ sealed class DiscordBotWorker : IHostedService
 
         try
         {
-            var status = await _settleUpHandler.HandleButtonAsync(component);
+            var status = await _settleUpHandler.HandleButtonAsync(component)
+                ?? await _receiptInteractionService.HandleButtonAsync(component);
             if (!string.IsNullOrWhiteSpace(status))
             {
                 activity?.SetTag("discord.button.status", status);
@@ -172,6 +186,35 @@ sealed class DiscordBotWorker : IHostedService
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.AddException(ex);
             _logger.LogError(ex, "Button interaction failed. CustomId={CustomId} UserId={UserId}", component.Data.CustomId, component.User.Id);
+        }
+    }
+
+    private async Task HandleSelectMenuExecutedAsync(SocketMessageComponent component)
+    {
+        using var activity = Telemetry.ActivitySource.StartActivity("discord.select_menu.execute");
+        activity?.SetTag("discord.component.custom_id", component.Data.CustomId);
+        activity?.SetTag("discord.user.id", component.User.Id.ToString());
+        activity?.SetTag("discord.guild.id", component.GuildId?.ToString());
+
+        try
+        {
+            var status = await _receiptInteractionService.HandleSelectMenuAsync(component);
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                activity?.SetTag("discord.select_menu.status", status);
+                _logger.LogInformation(
+                    "Select menu interaction completed. CustomId={CustomId} UserId={UserId} Status={Status}",
+                    component.Data.CustomId,
+                    component.User.Id,
+                    status);
+            }
+        }
+        catch (Exception ex)
+        {
+            activity?.SetTag("discord.select_menu.status", "error");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            _logger.LogError(ex, "Select menu interaction failed. CustomId={CustomId} UserId={UserId}", component.Data.CustomId, component.User.Id);
         }
     }
 
