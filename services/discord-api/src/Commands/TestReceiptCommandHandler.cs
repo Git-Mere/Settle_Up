@@ -7,16 +7,16 @@ sealed class TestReceiptCommandHandler
     public const string CommandName = "test";
 
     private readonly ReceiptDraftTestDataLoader _testDataLoader;
-    private readonly ReceiptInteractionService _receiptInteractionService;
+    private readonly ReceiptDraftSessionService _receiptDraftSessionService;
     private readonly ILogger<TestReceiptCommandHandler> _logger;
 
     public TestReceiptCommandHandler(
         ReceiptDraftTestDataLoader testDataLoader,
-        ReceiptInteractionService receiptInteractionService,
+        ReceiptDraftSessionService receiptDraftSessionService,
         ILogger<TestReceiptCommandHandler> logger)
     {
         _testDataLoader = testDataLoader;
-        _receiptInteractionService = receiptInteractionService;
+        _receiptDraftSessionService = receiptDraftSessionService;
         _logger = logger;
     }
 
@@ -35,11 +35,10 @@ sealed class TestReceiptCommandHandler
         try
         {
             var payload = await _testDataLoader.LoadAsync(command.User.Id.ToString(), command.User.GlobalName ?? command.User.Username);
-            await _receiptInteractionService.CreateOrUpdateSessionFromDraftAsync(
+            await _receiptDraftSessionService.CreateOrUpdateSessionFromDraftAsync(
                 payload,
                 command,
-                targetChannel: null,
-                cancellationToken: CancellationToken.None);
+                CancellationToken.None);
 
             _logger.LogInformation("Test receipt session created. UserId={UserId} DraftId={DraftId}", command.User.Id, payload.ResolvedDraftId);
             return "success";

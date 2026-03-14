@@ -11,16 +11,16 @@ sealed class SettleUpCommandHandler
     private const string PaymentContactCustomId = "payment_contact";
 
     private readonly BlobUploaderProvider _blobUploaderProvider;
-    private readonly ReceiptInteractionService _receiptInteractionService;
+    private readonly ReceiptDraftSessionService _receiptDraftSessionService;
     private readonly ILogger<SettleUpCommandHandler> _logger;
 
     public SettleUpCommandHandler(
         BlobUploaderProvider blobUploaderProvider,
-        ReceiptInteractionService receiptInteractionService,
+        ReceiptDraftSessionService receiptDraftSessionService,
         ILogger<SettleUpCommandHandler> logger)
     {
         _blobUploaderProvider = blobUploaderProvider;
-        _receiptInteractionService = receiptInteractionService;
+        _receiptDraftSessionService = receiptDraftSessionService;
         _logger = logger;
     }
 
@@ -172,7 +172,7 @@ sealed class SettleUpCommandHandler
 
         if (modal.Channel is IMessageChannel targetChannel)
         {
-            await _receiptInteractionService.CreatePendingUploadSessionAsync(
+            await _receiptDraftSessionService.CreatePendingUploadSessionAsync(
                 uploadResult.BlobUri,
                 modal.User.Id.ToString(),
                 modal.User.GlobalName ?? modal.User.Username,

@@ -4,7 +4,7 @@ public static class GettingDraftEndpoint
 {
     public static async Task<IResult> HandleAsync(
         HttpRequest request,
-        ReceiptInteractionService receiptInteractionService,
+        ReceiptDraftSessionService receiptDraftSessionService,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -35,16 +35,12 @@ public static class GettingDraftEndpoint
                 return Results.NotFound(ApiErrorResponse.DraftNotFound($"Draft not found for draftId '{draftId}'."));
             }
 
-            var ocrItems = ReceiptItemMergeService.BuildOcrItems(payload.Items);
-            var mergedItems = ReceiptItemMergeService.MergeForUi(ocrItems);
-
             logger.LogInformation(
-                "Draft found. draftId={DraftId} RawItemCount={RawItemCount} MergedItemCount={MergedItemCount}",
+                "Draft found. draftId={DraftId} ItemCount={ItemCount}",
                 draftId,
-                ocrItems.Count,
-                mergedItems.Count);
+                payload.Items?.Count ?? 0);
 
-            await receiptInteractionService.CreateOrUpdateSessionFromDraftAsync(payload, cancellationToken);
+            await receiptDraftSessionService.CreateOrUpdateSessionFromDraftAsync(payload, cancellationToken);
 
             return Results.Ok(new { message = "draft received" });
         }

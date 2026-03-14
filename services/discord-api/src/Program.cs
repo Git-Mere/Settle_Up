@@ -32,6 +32,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<BlobUploaderProvider>();
 builder.Services.AddSingleton<ReceiptSessionStore>();
 builder.Services.AddSingleton<ReceiptDraftTestDataLoader>();
+builder.Services.AddSingleton<ReceiptMainMessageService>();
+builder.Services.AddSingleton<ReceiptDraftSessionService>();
 builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
