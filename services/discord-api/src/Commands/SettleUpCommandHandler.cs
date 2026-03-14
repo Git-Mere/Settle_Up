@@ -8,15 +8,19 @@ sealed class SettleUpCommandHandler
     private const string UploadButtonPrefix = "settleup-upload";
     private const string UploadModalPrefix = "settleup-upload-modal";
     private const string UploadFileCustomId = "receipt_image";
+    private const string PaymentContactCustomId = "payment_contact";
 
     private readonly BlobUploaderProvider _blobUploaderProvider;
+    private readonly ReceiptInteractionService _receiptInteractionService;
     private readonly ILogger<SettleUpCommandHandler> _logger;
 
     public SettleUpCommandHandler(
         BlobUploaderProvider blobUploaderProvider,
+        ReceiptInteractionService receiptInteractionService,
         ILogger<SettleUpCommandHandler> logger)
     {
         _blobUploaderProvider = blobUploaderProvider;
+        _receiptInteractionService = receiptInteractionService;
         _logger = logger;
     }
 
@@ -85,6 +89,13 @@ sealed class SettleUpCommandHandler
                 maxValues: 1,
                 isRequired: true,
                 description: "jpg 또는 png 파일을 업로드해 주세요.")
+            .AddTextInput(
+                label: "계좌번호 / 전화번호 / 이메일(zelle) - 선택, 저장되지 않음",
+                customId: PaymentContactCustomId,
+                style: TextInputStyle.Paragraph,
+                required: false,
+                placeholder: "예: 010-1234-5678 / example@email.com",
+                maxLength: 200)
             .Build();
 
         await component.RespondWithModalAsync(modal);
@@ -124,6 +135,12 @@ sealed class SettleUpCommandHandler
             return "missing_attachment";
         }
 
+        var paymentContact = modal.Data.Components
+            .FirstOrDefault(component => string.Equals(component.CustomId, PaymentContactCustomId, StringComparison.Ordinal))
+            ?.Value;
+
+        await modal.DeferAsync(ephemeral: true);
+
         BlobUploadResult uploadResult;
         try
         {
@@ -132,13 +149,13 @@ sealed class SettleUpCommandHandler
         }
         catch (InvalidOperationException invalidEx)
         {
-            await modal.RespondAsync(invalidEx.Message, ephemeral: true);
+            await modal.FollowupAsync(invalidEx.Message, ephemeral: true);
             _logger.LogWarning("Blob upload rejected. UserId={UserId} FileName={FileName} Reason={Reason}", modal.User.Id, attachment.Filename, invalidEx.Message);
             return "invalid_image";
         }
         catch (Exception ex)
         {
-            await modal.RespondAsync("Blob 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true);
+            await modal.FollowupAsync("Blob 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true);
             _logger.LogError(ex, "Blob upload failed. UserId={UserId} FileName={FileName}", modal.User.Id, attachment.Filename);
             return "upload_error";
         }
@@ -153,8 +170,19 @@ sealed class SettleUpCommandHandler
             uploadResult.ContainerName,
             uploadResult.BlobName);
 
-        await modal.RespondAsync(
-            $"Blob 업로드 완료\nContainer: `{uploadResult.ContainerName}`\nBlob: `{uploadResult.BlobName}`\nURL: {uploadResult.BlobUri}",
+        if (modal.Channel is IMessageChannel targetChannel)
+        {
+            await _receiptInteractionService.CreatePendingUploadSessionAsync(
+                uploadResult.BlobUri,
+                modal.User.Id.ToString(),
+                modal.User.GlobalName ?? modal.User.Username,
+                paymentContact,
+                targetChannel,
+                CancellationToken.None);
+        }
+
+        await modal.FollowupAsync(
+            $"업로드를 완료했습니다. 같은 채널에 체크 메시지를 만들었고, 파싱 완료 후 자동으로 갱신합니다.\n입력한 정산 수단 정보는 장기 저장하지 않습니다.\nURL: {uploadResult.BlobUri}",
             ephemeral: true);
 
         return "success";

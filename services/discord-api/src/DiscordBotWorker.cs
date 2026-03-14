@@ -227,7 +227,8 @@ sealed class DiscordBotWorker : IHostedService
 
         try
         {
-            var status = await _settleUpHandler.HandleModalAsync(modal);
+            var status = await _settleUpHandler.HandleModalAsync(modal)
+                ?? await _receiptInteractionService.HandleModalAsync(modal);
             if (!string.IsNullOrWhiteSpace(status))
             {
                 activity?.SetTag("discord.modal.status", status);

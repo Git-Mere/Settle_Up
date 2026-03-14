@@ -25,11 +25,18 @@ public sealed class ReceiptDraftTestDataLoader
             throw new InvalidOperationException("테스트 영수증 JSON을 읽을 수 없습니다.");
         }
 
+        var uniqueDraftId = $"test-receipt-ui-{Guid.NewGuid():N}";
+        var blobUrl = payload.BlobUrl;
+        if (!string.IsNullOrWhiteSpace(blobUrl))
+        {
+            blobUrl = blobUrl.Replace("test-receipt-ui-001", uniqueDraftId, StringComparison.Ordinal);
+        }
+
         return new ReceiptDraftNotificationRequest
         {
-            Id = payload.Id,
-            DraftId = payload.DraftId,
-            BlobUrl = payload.BlobUrl,
+            Id = uniqueDraftId,
+            DraftId = uniqueDraftId,
+            BlobUrl = blobUrl,
             Status = payload.Status,
             UploadedByUserId = uploadedByUserId,
             MerchantName = string.IsNullOrWhiteSpace(payload.MerchantName) ? uploadedByDisplayName : payload.MerchantName,
