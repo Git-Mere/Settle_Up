@@ -74,3 +74,8 @@ If the service structure changes significantly, update:
 - `services/discord-api/codex.md`
 - `services/discord-api/README.md`
 - related workflow/Docker settings if shared project references or build contexts change
+
+## Current Service Notes
+- receipt selection UI는 현재 public embed 기반으로 동작하며 `/test`가 parser callback 이후 상태를 재현하는 주 테스트 경로다.
+- add/remove/edit/confirm 로직은 `ReceiptInteractionService`가 처리하고, 공개 메인 메시지 발행은 `ReceiptMainMessageService`, draft session 생성/갱신은 `ReceiptDraftSessionService`가 담당한다.
+- 현재 환경에서는 기존 공개 메시지를 REST로 다시 찾아 수정/삭제하는 경로가 `50001 Missing Access`로 실패할 수 있으니, Discord channel lookup 실패를 전제로 코드를 읽어야 한다.

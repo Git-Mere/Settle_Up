@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션에서 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + 공통 observability 적용 + structured logging 보강"을 진행했다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + receipt interaction 리팩토링" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -26,7 +26,7 @@
 4. 테스트용 draft UI 명령 추가
 - `/test` slash command를 추가했다.
 - `src/TestData/sample-receipt-draft.json`을 로드해 receipt selection UI 세션을 생성한다.
-- 실행 사용자 id를 `uploadedByUserId`로 덮어써 해당 사용자 DM에 테스트 UI를 보낸다.
+- 실행 사용자 id를 `uploadedByUserId`로 덮어써 현재 채널에 테스트 UI를 생성한다.
 
 5. Blob 업로드 기능 추가
 - `/settle-up` 플로우에서 업로드 파일을 Azure Blob으로 저장.
@@ -38,7 +38,19 @@
 - Discord 내부 로그도 `Console.WriteLine` 대신 `ILogger`로 매핑.
 - `/getting_draft` 호출도 `ILogger`로 기록한다.
 
-7. `/settle-up` 상호작용 플로우 변경
+7. receipt interaction UI 구현
+- 체크 섹션 embed:
+  - seller / purchase date / buyer / item total / tax / total
+  - shared / individual / unassigned
+  - `Select Item`, `Add item`, `Remove item`, `Edit item`, `Confirm`
+- confirm embed:
+  - 동일 header
+  - payment contact
+  - settlement line list
+- add/remove/edit 시 금액 header 재계산 반영.
+- add item으로 만든 manual item도 edit 가능하도록 modal custom id는 짧은 token 매핑을 사용한다.
+
+8. `/settle-up` 상호작용 플로우 변경
 - 기존: slash 후 채널 메시지 업로드 대기
 - 현재: slash -> 버튼 표시 -> 버튼 클릭 -> 모달(파일 업로드 컴포넌트) -> Blob 업로드
 
@@ -77,7 +89,7 @@ services/discord-api/
 2. 샘플 draft JSON 로드
 3. 실행 사용자 id로 payload 덮어쓰기
 4. 기존 receipt session/UI 생성 경로 재사용
-5. 실행 사용자 DM에 테스트 UI 전송
+5. 현재 채널에 테스트 UI 전송
 
 ### `/pingtest`
 - 즉시 ephemeral 응답: `pong! slash command 정상 작동 중입니다.`
@@ -120,7 +132,7 @@ services/discord-api/
 
 ## Current Constraints / Next Step
 - `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 기본 callback endpoint 골격은 추가됐다.
-- 다음 작업은 `/getting_draft` request/response DTO 계약을 `receipt-parser`와 맞춰 구체화하는 것이다.
+- 다음 작업은 공개 체크 메시지 정리 전략과 Discord 권한 제약(`50001 Missing Access`)을 함께 정리하는 것이다.
 - shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
 
 ## Known Decisions / Open Items
@@ -137,10 +149,10 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 ## Next Codex Session Quick Start
-1. confirm 버튼 로직 연결
-2. 선택 세션 영속화 전략 추가
-3. 인증/검증 규칙 추가
-4. 요청 payload 검증/에러 응답 강화
+1. 이전 `Settlement Check` 공개 메시지 정리 전략 확정
+2. Discord 채널 재조회 실패(`50001 Missing Access`) 원인 또는 우회 방식 정리
+3. `/settle-up` 실경로와 `/test` UI 동작 차이 재검증
+4. 인증/검증 규칙 추가
 5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
 6. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
@@ -148,4 +160,5 @@ services/discord-api/
 ## Last Verified State
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
-- next planned change: connect received draft payload to Discord follow-up messaging flow
+- `/test` 기준 add/remove/edit/confirm 기본 흐름 확인
+- add item 후 edit 시 발생하던 `Modal CustomId <= 100` 오류는 짧은 edit token 매핑으로 수정

@@ -83,3 +83,9 @@ If making changes:
 - keep documentation in sync with structure
 - prefer minimal but correct implementations first
 - if build, Docker, or shared-project behavior changes, verify the matching workflow file as part of the same change
+
+## Current Project Notes
+- `discord-api`는 현재 업로드 pending 메시지, parser draft 수신, 체크 섹션 embed, item selection/add/remove/edit, confirm embed까지 로컬 기준 동작한다.
+- `discord-api`의 receipt UI는 현재 "기존 공개 메시지 안정적 수정" 대신 "새 공개 메시지 발행" 전략을 기본으로 사용한다. 이건 현재 서버/권한 환경에서 Discord REST channel lookup이 `50001 Missing Access`로 자주 실패하기 때문이다.
+- 따라서 다음 세션에서 `discord-api` 작업을 이어갈 때 가장 먼저 볼 포인트는 공개 체크 메시지 정리 전략과 Discord 채널 접근 제약이다.
+- `receipt-parser` -> `discord-api` HTTP callback 경로는 이미 연결돼 있고, 로컬 테스트에서는 `/test`가 parser callback 이후 UI를 재현하는 기준 경로다.

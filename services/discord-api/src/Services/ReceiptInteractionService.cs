@@ -106,9 +106,9 @@ public sealed class ReceiptInteractionService
             return await HandleAddItemModalAsync(modal, addReceiptId);
         }
 
-        if (ReceiptInteractionCustomIds.TryParseEditModal(modal.Data.CustomId, out var editReceiptId, out var itemId))
+        if (ReceiptInteractionCustomIds.TryParseEditModal(modal.Data.CustomId, out var editReceiptId, out var editToken))
         {
-            return await HandleEditItemModalAsync(modal, editReceiptId, itemId);
+            return await HandleEditItemModalAsync(modal, editReceiptId, editToken);
         }
 
         return null;
@@ -244,7 +244,7 @@ public sealed class ReceiptInteractionService
 
         var modal = new ModalBuilder()
             .WithTitle("아이템 수정")
-            .WithCustomId($"{ReceiptInteractionCustomIds.EditItemModalPrefix}:{receiptId}:{itemId}")
+            .WithCustomId($"{ReceiptInteractionCustomIds.EditItemModalPrefix}:{receiptId}:{CreateEditToken(session, item.Id)}")
             .AddTextInput(
                 label: "아이템 이름",
                 customId: ReceiptInteractionCustomIds.ItemNameInputCustomId,
@@ -354,7 +354,7 @@ public sealed class ReceiptInteractionService
         return "item_added";
     }
 
-    private async Task<string> HandleEditItemModalAsync(SocketModal modal, string receiptId, string itemId)
+    private async Task<string> HandleEditItemModalAsync(SocketModal modal, string receiptId, string editToken)
     {
         if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
         {
@@ -366,6 +366,12 @@ public sealed class ReceiptInteractionService
         {
             await modal.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
             return "forbidden_user";
+        }
+
+        if (!session.PendingEditItemIds.TryGetValue(editToken, out var itemId))
+        {
+            await modal.RespondAsync("수정 대상 아이템 정보를 찾을 수 없습니다. 다시 시도해 주세요.", ephemeral: true);
+            return "edit_item_token_not_found";
         }
 
         var itemName = GetModalValue(modal, ReceiptInteractionCustomIds.ItemNameInputCustomId);
@@ -389,6 +395,7 @@ public sealed class ReceiptInteractionService
             return "edit_item_not_found";
         }
 
+        session.PendingEditItemIds.Remove(editToken);
         await modal.DeferAsync(ephemeral: true);
         _sessionStore.AddOrUpdate(session);
         await _mainMessageService.PublishForModalAsync(session, modal);
@@ -544,6 +551,13 @@ public sealed class ReceiptInteractionService
         return modal.Data.Components
             .FirstOrDefault(component => string.Equals(component.CustomId, customId, StringComparison.Ordinal))
             ?.Value;
+    }
+
+    private static string CreateEditToken(ReceiptSessionState session, string itemId)
+    {
+        var token = Guid.NewGuid().ToString("N")[..12];
+        session.PendingEditItemIds[token] = itemId;
+        return token;
     }
 
     private static int GetInstanceIndex(ReceiptSessionState session, ReceiptLineItemState item)
