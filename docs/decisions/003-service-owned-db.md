@@ -1,52 +1,70 @@
-# 003 - Service-Owned Databases
+# 003 - Use Service-Owned Databases
 
 ## Status
 Accepted
 
 ## Context
-Settle Up is designed as a multi-service system consisting of several independent services such as:
 
-- Discord Bot Service
-- Receipt Parser Service
-- Settlement Service
+Settle Up is designed as a multi-service system with distinct service responsibilities, including parsing, Discord interaction, and future settlement-related capabilities.
 
-Each service has a clearly defined responsibility. The Receipt Parser Service processes uploaded receipt images, invokes Azure Document Intelligence to extract structured data, and produces a parsed receipt draft. The Settlement Service calculates final payment balances after users confirm item ownership.
+An architectural decision was required around persistent storage ownership:
 
-During the design process, we considered how these services should interact with persistent storage.
+1. all services share one database
+2. each service owns its own database and data model
 
-The main architectural question was whether all services should share a single database or whether each service should manage its own database.
+This decision affects service boundaries, coupling, and long-term schema evolution.
 
-## Option A: Shared Database Across Services
+## Options Considered
 
-### Advantages
-- Simpler infrastructure with a single database instance
-- Easier to implement queries across different domains
-- Less configuration required during early development
+### Option A - Shared Database Across Services
 
-### Disadvantages
-- Strong coupling between services through shared data structures
-- Services may accidentally depend on each other's internal schemas
-- Changes in one service’s data model may break another service
-- Violates common microservice design practices where services own their data
+Advantages:
 
-## Option B: Service-Owned Databases
+- simpler initial infrastructure
+- easier direct querying across domains
+- less configuration during early development
 
-### Advantages
-- Clear data ownership boundaries for each service
-- Reduces coupling between services
-- Each service can evolve its schema independently
-- Aligns with common microservice architecture practices
+Disadvantages:
 
-### Disadvantages
-- Requires additional infrastructure configuration
-- Data sharing between services must be done through APIs or events instead of direct queries
+- strong coupling between services
+- services can become dependent on each other’s internal schemas
+- schema changes in one domain can break another
+- weak alignment with common microservice design practices
+
+### Option B - Service-Owned Databases
+
+Advantages:
+
+- clear data ownership per service
+- reduced coupling between services
+- each service can evolve its schema independently
+- better alignment with service-oriented architecture principles
+
+Disadvantages:
+
+- requires additional infrastructure setup
+- data sharing must happen through APIs or events rather than direct queries
 
 ## Decision
-We chose to adopt a service-owned database model where each service manages its own database.
 
-## Rationale
-This approach aligns with the architectural goal of maintaining clear service boundaries and minimizing coupling between services.
+We will adopt a service-owned database model where each service manages its own database.
 
-The Receipt Parser Service will store parsed receipt drafts and intermediate receipt states in its own database. The Settlement Service will maintain its own database to store final settlement results and calculation history.
+## Consequences
 
-Services communicate through APIs or events rather than direct database access, ensuring that each service remains responsible for its own data model and persistence layer.
+### Positive
+
+- clearer service boundaries
+- reduced schema coupling between services
+- easier long-term evolution of service internals
+- better support for independent deployment and change management
+
+### Negative
+
+- cross-service data access becomes more explicit and more complex
+- infrastructure setup can increase as more services are added
+
+## Follow-up Notes
+
+Under this model, the parser service owns parsed receipt draft data, while other services should own their own persistence needs rather than relying on direct access to parser-owned storage.
+
+Inter-service communication should happen through contracts such as HTTP or events, not through shared database access.

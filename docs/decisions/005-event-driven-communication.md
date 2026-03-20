@@ -1,58 +1,72 @@
-# 005 - Event-Driven Service Communication
+# 005 - Prefer Event-Driven Communication Between Services
 
 ## Status
 Accepted
 
 ## Context
-Settle Up is designed as a multi-service system consisting of several independent services, including:
 
-- Discord Bot Service
-- Receipt Parser Service
-- Settlement Service
+Settle Up is designed as a multi-service system. Services need to coordinate to complete the full workflow of receipt processing and settlement.
 
-These services must communicate in order to complete the full workflow of receipt processing and bill settlement.
+An early design question was how services should communicate:
 
-Initially, we considered allowing services to communicate directly through synchronous HTTP requests. However, this approach would introduce tight coupling between services and create dependencies on service availability during runtime.
+1. direct synchronous HTTP between services
+2. event-driven communication through an event bus
 
-Since the system already uses Azure Event Grid to react to Blob Storage events, we considered extending the architecture to use event-driven communication between internal services as well.
+This decision affects coupling, resilience, extensibility, and operational complexity.
 
-## Option A: Direct Service-to-Service Communication (HTTP)
+## Options Considered
 
-### Advantages
-- Simpler implementation
-- Easier to debug during early development
-- Immediate response from downstream services
+### Option A - Direct Service-to-Service HTTP
 
-### Disadvantages
-- Strong coupling between services
-- Service failures propagate upstream
-- Reduced flexibility for adding additional consumers
-- Harder to scale or extend the system in the future
+Advantages:
 
-## Option B: Event-Driven Communication via Event Bus
+- simpler initial implementation
+- easier to debug in very early development
+- immediate response from downstream services
 
-### Advantages
-- Loose coupling between services
-- Services communicate through events rather than direct dependencies
-- Multiple services can subscribe to the same event
-- Improved resilience since services process events independently
-- Aligns well with cloud-native event-driven architectures
+Disadvantages:
 
-### Disadvantages
-- Slightly more complex infrastructure setup
-- Eventual consistency instead of immediate synchronous responses
-- Debugging event flows can be more complex
+- stronger coupling between services
+- upstream behavior depends directly on downstream availability
+- harder to add additional consumers later
+- runtime dependencies become tighter
+
+### Option B - Event-Driven Communication
+
+Advantages:
+
+- looser coupling between services
+- multiple services can react to the same event
+- improved resilience through asynchronous processing
+- better alignment with cloud-native event-driven architecture
+
+Disadvantages:
+
+- infrastructure is more complex than pure direct calls
+- eventual consistency replaces immediate synchronous completion
+- debugging event flows can be harder
 
 ## Decision
-We chose to adopt an event-driven communication model between services.
 
-## Rationale
-The system already uses Azure Event Grid to trigger the Receipt Parser Service when a receipt image is uploaded to Blob Storage. Extending this event-driven pattern to internal service communication creates a more consistent architecture.
+The preferred architectural direction is event-driven communication between services.
 
-After the parser service successfully processes a receipt, it will publish a domain event indicating that the receipt has been parsed. Other services, such as the Discord Bot Service or Settlement Service, can subscribe to these events and react accordingly.
+## Consequences
 
-This approach keeps services loosely coupled and allows the system to evolve without introducing direct dependencies between services.
+### Positive
 
-For example, the Receipt Parser Service may emit an event such as `ReceiptParsed`. The Discord Bot Service can subscribe to this event to notify users, while the Settlement Service may begin preparing the settlement workflow.
+- reduced direct coupling between services
+- improved extensibility for future consumers
+- better alignment with the cloud eventing model already used for Blob events
+- clearer domain-event-oriented architecture
 
-Using events rather than direct service calls ensures that each service remains responsible for its own domain while still enabling coordination across the system.
+### Negative
+
+- event infrastructure and operational tracing become more important
+- eventual consistency must be accepted
+- debugging can require more tooling and discipline
+
+## Follow-up Notes
+
+This decision expresses the architectural preference, not a rule that every integration must be event-driven immediately.
+
+Later decisions may choose a more pragmatic short-term mechanism for specific flows while the project is still evolving. Those exceptions should be documented explicitly rather than treated as a reversal of this overall direction.

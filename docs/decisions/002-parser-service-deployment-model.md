@@ -1,56 +1,77 @@
-# 002 - Parser Service Deployment Model
+# 002 - Deploy the Parser as a Containerized Service
 
 ## Status
 Accepted
 
 ## Context
+
 The receipt parsing component of Settle Up is responsible for:
 
-- Receiving blob creation events from Azure Blob Storage via Event Grid
-- Invoking Azure Document Intelligence to extract structured data from receipt images
-- Processing the extracted data
-- Persisting the parsed result to Cosmos DB
+- receiving blob creation events from Azure Blob Storage via Event Grid
+- invoking Azure Document Intelligence to extract structured data from receipt images
+- processing the extracted data
+- persisting parsed results
 
-There were two possible approaches for implementing this component:
+Although the current functionality is primarily event-driven, the parser is expected to grow over time with additional processing logic and operational endpoints.
 
-- Using Azure Functions as an event-driven serverless function
-- Implementing a containerized microservice deployed on Azure Container Apps
+Two deployment approaches were considered:
 
-While the current functionality is primarily event-driven, the parser service is expected to grow over time with additional processing logic and operational capabilities.
+1. Azure Functions as a serverless event-driven component
+2. a containerized microservice deployed on Azure Container Apps
 
-## Option A: Azure Function
+## Options Considered
 
-### Advantages
-- Native integration with Event Grid triggers
-- Minimal infrastructure management
-- Automatic scaling with event volume
-- Fast to implement for simple event-driven workloads
+### Option A - Azure Function
 
-### Disadvantages
-- Less suitable for evolving into a full microservice
-- Harder to expose additional APIs for debugging or manual reprocessing
-- More limited control over runtime environment
-- Architectural mismatch if the system grows into multiple long-running services
+Advantages:
 
-## Option B: Container App Microservice
+- native integration with Event Grid triggers
+- minimal infrastructure management
+- automatic scaling with event volume
+- fast to implement for simple event-driven workloads
 
-### Advantages
-- Full control over the runtime and application architecture
-- Easy to expose additional HTTP endpoints (e.g., manual parsing, health checks, debugging)
-- Aligns with the microservice architecture used by other services in the system
-- Simplifies future expansion such as additional processing pipelines or background workers
-- Consistent deployment model with other services (e.g., Discord API service)
+Disadvantages:
 
-### Disadvantages
-- Requires building and maintaining container images
-- Slightly more infrastructure setup compared to serverless functions
+- less suitable if the component grows into a broader service
+- harder to expose additional APIs for debugging or manual reprocessing
+- more constrained runtime and hosting model
+- weaker alignment with the rest of the planned service architecture
+
+### Option B - Containerized Microservice
+
+Advantages:
+
+- full control over runtime and application structure
+- easy to expose additional HTTP endpoints
+- aligns with the broader multi-service architecture
+- easier to extend with more processing flows or operational features
+- consistent deployment model with other services such as `discord-api`
+
+Disadvantages:
+
+- requires building and maintaining container images
+- slightly more infrastructure setup than a pure serverless function
 
 ## Decision
-We chose to implement the parser as a containerized service deployed on Azure Container Apps.
 
-## Rationale
-Although the parser currently operates as an event-driven component, it is expected to evolve into a more complex service that may include additional processing logic, operational endpoints, and integration points.
+We will implement the parser as a containerized service deployed on Azure Container Apps.
 
-Deploying the parser as a containerized microservice provides greater architectural flexibility and maintains consistency with the overall service-oriented design of the system.
+## Consequences
 
-This approach also allows the service to scale independently while keeping the infrastructure model consistent across services.
+### Positive
+
+- stronger alignment with the project’s service-oriented direction
+- easier future expansion for debugging, reprocessing, and operational endpoints
+- more control over runtime behavior
+- better consistency with other services in the repository
+
+### Negative
+
+- more operational setup than a simple serverless trigger
+- container build and deployment must be maintained
+
+## Follow-up Notes
+
+This decision does not remove the event-driven nature of receipt processing. The parser may still be triggered by Event Grid, but it will run as a long-lived service rather than a pure function.
+
+This keeps the architecture flexible while preserving compatibility with future service growth.

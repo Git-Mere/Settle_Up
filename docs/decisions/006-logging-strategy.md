@@ -1,25 +1,23 @@
-# 006. Observability and Logging Strategy
+# 006 - Standardize Observability and Logging
 
-- **Status**: Accepted
-- **Date**: 2026-03-09
+## Status
+Accepted
 
 ## Context
 
-The Settle Up project currently has multiple services, including:
+Settle Up currently contains multiple services, including:
 
 - `discord-api`
 - `receipt-parser`
 
-As observability was added, the console output became too noisy. In particular:
+As observability was added, console output became noisy because several different signal types appeared together:
 
 - Discord.Net internal logs
 - OpenTelemetry `HttpClient` instrumentation output
 - custom application `Activity` traces
 - general application logs
 
-were all appearing together in the console.
-
-This made local debugging harder, because low-level HTTP tracing and raw activity dumps were mixed with high-value application events such as:
+This made local debugging harder because low-level tracing and raw activity dumps were mixed with high-value operational events such as:
 
 - service startup
 - Discord ready
@@ -28,139 +26,74 @@ This made local debugging harder, because low-level HTTP tracing and raw activit
 - Cosmos DB writes
 - failures and warnings
 
-We also want a structure that scales cleanly as new services are added later.
+The project also needs an observability pattern that scales cleanly as new services are added and supports Azure Monitor / Application Insights integration through `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 
-Additionally, we want to use Azure Monitor / Application Insights for tracing, and we already have an environment variable available for that integration:
+## Options Considered
 
-- `APPLICATIONINSIGHTS_CONNECTION_STRING`
+### Option A - Keep Mixed Console-Centric Logging
+
+Advantages:
+
+- simplest setup
+- minimal conceptual overhead
+- easy to start with during initial development
+
+Disadvantages:
+
+- console output becomes difficult to read
+- application logs and tracing signals are not clearly separated
+- low-value noise can hide important operational information
+- scaling the same approach across multiple services becomes messy
+
+### Option B - Separate Human-Readable Logs from Tracing
+
+Advantages:
+
+- application logs remain readable in console
+- tracing can be exported to dedicated observability tooling
+- easier to scale a consistent pattern across services
+- better support for dependency tracing and cross-service correlation
+
+Disadvantages:
+
+- setup is more complex
+- developers must understand the distinction between logging and tracing
+- shared observability bootstrap adds some project structure overhead
 
 ## Decision
 
-We will separate **application logging** from **observability tracing**.
+We will separate application logging from observability tracing.
 
-### 1. `ILogger` is the standard for human-readable application logs
+The standard is:
 
-`ILogger` will be used for logs intended for developers/operators to read directly.
+- `ILogger` for human-readable application logs
+- OpenTelemetry for tracing and dependency observability
+- Azure Monitor / Application Insights as the primary destination for exported traces when configured
 
-These logs should include meaningful application events such as:
-
-- service starting
-- service ready
-- slash command started/completed/failed
-- blob event received
-- receipt parsing started/completed/failed
-- Cosmos DB writes started/completed/failed
-- warnings and errors
-
-These logs should be:
-
-- concise
-- structured
-- readable in console output
-- consistent across services
-
-`Console.WriteLine` should be avoided in favor of `ILogger` unless there is a very specific reason.
-
-### 2. OpenTelemetry is the standard for tracing and dependency observability
-
-OpenTelemetry will be used for:
-
-- custom `Activity` traces
-- dependency tracing
-- `HttpClient` instrumentation
-- future cross-service trace correlation
-
-This includes service-level custom activity names such as:
-
-- `discord.ready`
-- `discord.slash_command.execute`
-- `receipt_parser.blob_event.process`
-- `receipt_parser.cosmos.upsert`
-
-Activity names should follow a consistent naming pattern:
-
-`<service>.<operation>`
-
-### 3. Azure Monitor / Application Insights is the primary destination for OpenTelemetry traces
-
-OpenTelemetry traces should be exported to Azure Monitor / Application Insights.
-
-The exporter must use:
-
-- `APPLICATIONINSIGHTS_CONNECTION_STRING`
-
-from environment variables.
-
-The connection string must not be hardcoded.
-
-If the environment variable is missing:
-
-- the service must not crash
-- local logging must continue working
-- the Azure exporter should be skipped
-- a warning log may be emitted
-
-### 4. Console output should prioritize readable application logs
-
-Console output should remain useful during development and deployment debugging.
-
-Therefore:
-
-- `ILogger` logs should remain visible in console
-- raw OpenTelemetry activity dumps should not flood the console
-- verbose `System.Net.Http` trace output should be minimized or removed from console output
-- if `ConsoleExporter` is used at all, it should be limited to essential information
-
-The preferred model is:
-
-- **console** → readable application logs
-- **Azure Monitor / Application Insights** → detailed traces and dependencies
-
-### 5. The same logging pattern must be shared across services
-
-This observability structure must be applied consistently to:
-
-- `discord-api`
-- `receipt-parser`
-
-Future services should follow the same pattern.
-
-To support that, common setup should be abstracted where practical, for example through:
-
-- shared extension methods
-- shared bootstrap helpers
-- shared observability configuration
+Console output should prioritize readable application logs rather than raw trace dumps.
 
 ## Consequences
 
 ### Positive
 
-- Console output becomes much easier to read
-- Application logs and tracing each have a clear responsibility
-- Azure Monitor receives detailed telemetry without cluttering console output
-- The project gains a scalable observability pattern for future services
-- Cross-service tracing becomes easier to support later
+- console output becomes easier to read
+- application logs and tracing have clearer responsibilities
+- Azure Monitor can receive richer telemetry without cluttering console output
+- the project gains a scalable observability pattern for future services
 
 ### Negative
 
-- Initial setup is slightly more complex than using console output only
-- Developers must understand the distinction between `ILogger` and OpenTelemetry
-- Shared observability setup introduces a small amount of project structure overhead
+- setup is more complex than console logging alone
+- developers need to learn and maintain the distinction between `ILogger` and OpenTelemetry
+- shared observability code introduces some structural overhead
 
-## Implementation Notes
+## Follow-up Notes
 
-- Add Azure Monitor / Application Insights OpenTelemetry exporter support
-- Read `APPLICATIONINSIGHTS_CONNECTION_STRING` from environment variables
-- Keep `ILogger` as the main console-facing logging mechanism
-- Reduce or remove noisy OpenTelemetry console exporter output
-- Preserve existing functionality while refactoring observability setup
-- Apply the same style to both current services and future services
+This pattern should be applied consistently across current and future services.
 
-## Summary
+Implementation expectations include:
 
-Settle Up will use a two-layer observability strategy:
-
-- **`ILogger` for human-readable application logs**
-- **OpenTelemetry for tracing and dependency observability**
-
-Detailed traces will go to Azure Monitor / Application Insights, while console output will remain focused on important application events.
+- using `ILogger` for meaningful application events
+- minimizing noisy raw console trace output
+- exporting traces to Azure Monitor / Application Insights when `APPLICATIONINSIGHTS_CONNECTION_STRING` is present
+- keeping services operational even when the exporter is not configured

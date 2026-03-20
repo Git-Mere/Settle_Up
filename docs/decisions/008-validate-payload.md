@@ -1,108 +1,78 @@
-# 008 - Validate Payload for the `/getting_draft` Endpoint
+# 008 - Validate Payloads at the `/getting_draft` Boundary
 
 ## Status
 Accepted
 
 ## Context
 
-The `discord-api` service exposes the `/getting_draft` endpoint, which is used to receive structured data from other internal components of the Settle Up system.
+The `discord-api` service exposes the `/getting_draft` endpoint to receive structured draft receipt data from internal components.
 
-At this stage of development, the system architecture is still evolving, and the request payload structure exchanged between services is not yet fully stabilized. Because of this, malformed or incomplete requests may occur during development or integration between services.
+During the current project stage, the request payload structure is still evolving. This increases the risk of malformed, incomplete, or inconsistent requests during development and integration.
 
-We therefore needed to decide how strictly incoming requests should be validated.
+A decision was required on how strictly the endpoint should validate incoming data:
 
-Two main options were considered:
-
-1. Accept incoming payloads without strict validation and rely on downstream services to handle errors
-2. Validate the payload at the API boundary before processing the request
-
-This decision affects system reliability, debugging efficiency, and the clarity of service contracts between components.
+1. accept payloads with minimal validation and fail later if needed
+2. validate payloads at the API boundary before processing
 
 ## Options Considered
 
-### Option 1 — No Payload Validation
-
-The API would accept incoming JSON payloads without checking whether required fields exist or whether field types are correct.
-
-Processing would continue until a failure occurs deeper in the system (for example, during database operations or message formatting).
+### Option A - Minimal Validation
 
 Advantages:
 
-- Simpler initial implementation
-- Faster early development
+- simpler initial implementation
+- faster early iteration
 
 Disadvantages:
 
-- Errors surface later in the processing pipeline
-- Harder debugging when malformed requests propagate through the system
-- Increased risk of inconsistent data reaching downstream services or storage
+- malformed requests fail deeper in the system
+- debugging becomes harder
+- inconsistent data can propagate into downstream processing or storage
 
----
-
-### Option 2 — Validate Payload at the API Boundary
-
-The `/getting_draft` endpoint validates incoming payloads before processing them.
-
-Validation includes checks such as:
-
-- Required fields must exist
-- Field types must match the expected schema
-- Strings must not be empty
-- URLs or identifiers must follow a basic valid format
-- Arrays and objects must have valid structure
-
-If validation fails, the API returns a **400 Bad Request** response and the request is not processed further.
+### Option B - Validate at the API Boundary
 
 Advantages:
 
-- Invalid requests are rejected immediately
-- Easier debugging during development
-- Clearer service contract between components
-- Prevents malformed data from reaching databases or other services
+- invalid requests are rejected immediately
+- debugging becomes easier during integration
+- service contracts become clearer
+- malformed data is prevented from moving deeper into the system
 
 Disadvantages:
 
-- Slightly more implementation work
-- Validation rules must be updated if the payload schema changes
-
----
+- validation logic requires maintenance as the schema evolves
+- implementation is slightly more complex
 
 ## Decision
 
-We decided to **implement payload validation for the `/getting_draft` endpoint**.
-
-Incoming requests will be validated at the API boundary to ensure that the payload structure matches the expected schema before any further processing occurs.
+We will validate `/getting_draft` payloads at the API boundary before processing them.
 
 If validation fails:
 
-- The request will return **HTTP 400 Bad Request**
-- A validation error will be logged for debugging purposes
+- the endpoint will return `400 Bad Request`
+- the request will not continue through the workflow
+- a validation failure will be logged
 
-At the current stage of development, **authentication will not be added yet**, as the endpoint is primarily used for internal service communication and development simplicity is preferred.
-
----
+Authentication is not part of this decision and may be added later.
 
 ## Consequences
 
 ### Positive
 
-- Invalid requests are rejected early in the request lifecycle
-- Debugging becomes easier when integration issues occur
-- Prevents malformed or incomplete data from propagating through the system
-- Establishes a clearer API contract between services
+- invalid requests are rejected early
+- integration debugging becomes easier
+- malformed data is less likely to reach storage or downstream logic
+- the endpoint contract becomes clearer
 
 ### Negative
 
-- Payload validation rules must be maintained as the schema evolves
-- Some additional implementation complexity is introduced
-- Overly strict validation could temporarily slow development if the schema changes frequently
+- validation rules must evolve with the payload schema
+- additional implementation complexity is introduced
 
----
+## Follow-up Notes
 
-## Future Considerations
+Future improvements may include:
 
-In future iterations of the system, we may:
-
-- Add authentication or service identity verification between services
-- Introduce a formal schema definition (e.g., OpenAPI or JSON Schema)
-- Apply validation middleware or shared DTO validation logic across services
+- authentication or service identity verification
+- formal schema definition through OpenAPI or JSON Schema
+- shared validation helpers across service boundaries

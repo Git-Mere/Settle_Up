@@ -1,47 +1,70 @@
-# 004 - Parser Data Scope and Settlement Responsibility
+# 004 - Limit Parser Data to Parsed Receipt Content
 
 ## Status
 Accepted
 
 ## Context
-The Settle Up system processes receipt images uploaded by users and extracts structured data using Azure Document Intelligence. The Receipt Parser Service is responsible for analyzing the receipt image and producing a parsed representation of the receipt.
 
-During the design process, we considered whether the parsed receipt draft stored in the parser database should also include user-assigned ownership information such as which user purchased or consumed each item.
+The receipt parser is responsible for analyzing uploaded receipts and producing structured receipt data.
 
-This raised an architectural question regarding service responsibilities and data ownership: should the parser service store user assignment data (e.g., buyer or participants), or should that responsibility belong to another service?
+A design question arose around whether the parser-owned data should also include user-driven assignment information, such as:
 
-## Option A: Store Buyer and Participant Information in Parser Database
+- who purchased an item
+- who shared an item
+- payer or participant details
 
-### Advantages
-- All receipt-related information is stored in a single document
-- Simplifies queries if both parsing data and assignment data are needed together
-- Fewer services involved in managing receipt data
+This decision affects service responsibility boundaries and the mutability of parser-owned data.
 
-### Disadvantages
-- Blurs the responsibility boundary between parsing and settlement logic
-- Introduces user-driven state changes into parser-owned data
-- Parser documents become mutable and tied to interaction workflows
-- Violates the principle of keeping service domains focused
+## Options Considered
 
-## Option B: Keep Parser Data Immutable and Move Assignment Logic to Settlement Service
+### Option A - Store User Assignment Data in the Parser Database
 
-### Advantages
-- Maintains a clear separation of concerns between services
-- Parser service stores only objective data extracted from the receipt
-- User-driven interactions and assignment logic remain in the settlement domain
-- Parser documents remain mostly immutable and easier to reason about
-- Aligns with service-owned database principles
+Advantages:
 
-### Disadvantages
-- Requires coordination between parser and settlement services
-- Settlement service must reference receipt data through receipt identifiers
+- all receipt-related information can live in one document
+- fewer services are involved in the overall receipt flow
+- some queries may become simpler
+
+Disadvantages:
+
+- parser ownership becomes mixed with settlement and interaction concerns
+- user-driven workflow state enters parser-owned data
+- parser documents become more mutable and less stable
+- service boundaries become blurred
+
+### Option B - Keep Parser Data Focused on Parsed Receipt Content
+
+Advantages:
+
+- clearer separation between parsing and settlement responsibilities
+- parser data remains focused on objective document interpretation
+- parser documents remain more stable and easier to reason about
+- better alignment with service-owned data principles
+
+Disadvantages:
+
+- downstream services must carry user interaction and settlement state
+- coordination is needed through identifiers and contracts
 
 ## Decision
-We chose to keep the parser database limited to storing parsed receipt data only. User assignment information such as item ownership, participants, or payer details will be managed by the Settlement Service.
 
-## Rationale
-The parser service is responsible solely for extracting structured data from receipt images. The information it produces represents the system’s interpretation of the document and should remain stable after parsing.
+The parser database will store parsed receipt data only. User assignment and settlement interaction state will be handled outside the parser domain.
 
-User interactions, such as selecting who purchased or shared specific items, belong to the settlement domain rather than the parsing domain. By moving this logic to the Settlement Service, we maintain clear service boundaries and keep parser documents focused on parsed receipt data.
+## Consequences
 
-This design also ensures that the parser database remains mostly immutable, while the settlement service manages dynamic user-driven state changes.
+### Positive
+
+- clearer service responsibility boundaries
+- parser documents remain closer to immutable parsed facts
+- user-driven workflow logic stays out of the parser service
+
+### Negative
+
+- downstream services must manage more interaction-specific state
+- cross-service coordination remains necessary
+
+## Follow-up Notes
+
+The parser should continue to focus on extracted receipt fields and normalized receipt structure.
+
+If future requirements introduce richer workflow recovery or audit needs, downstream documents may reference parser-owned receipt identifiers rather than expanding parser ownership to include settlement interaction state.
