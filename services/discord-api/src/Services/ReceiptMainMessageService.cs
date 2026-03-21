@@ -1,17 +1,22 @@
+using System.Net;
 using Discord;
 using Discord.WebSocket;
 
 public sealed class ReceiptMainMessageService
 {
+    private const int MaxDiscordRetryAttempts = 3;
     private readonly DiscordSocketClient _discordClient;
     private readonly ReceiptSessionStore _sessionStore;
+    private readonly ILogger<ReceiptMainMessageService> _logger;
 
     public ReceiptMainMessageService(
         DiscordSocketClient discordClient,
-        ReceiptSessionStore sessionStore)
+        ReceiptSessionStore sessionStore,
+        ILogger<ReceiptMainMessageService> logger)
     {
         _discordClient = discordClient;
         _sessionStore = sessionStore;
+        _logger = logger;
     }
 
     public async Task SendToChannelAsync(
@@ -20,10 +25,13 @@ public sealed class ReceiptMainMessageService
         CancellationToken cancellationToken)
     {
         var renderedMessage = ReceiptMessageRenderer.RenderReceiptMessage(session);
-        var sentMessage = await targetChannel.SendMessageAsync(
-            embed: renderedMessage.Embed,
-            components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-            options: new RequestOptions { CancelToken = cancellationToken });
+        var sentMessage = await ExecuteDiscordRetryAsync(
+            operationName: "send_main_message_to_channel",
+            operation: () => targetChannel.SendMessageAsync(
+                embed: renderedMessage.Embed,
+                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
+                options: new RequestOptions { CancelToken = cancellationToken }),
+            cancellationToken);
 
         ApplyPublishedMessageMetadata(session, sentMessage, targetChannel);
         _sessionStore.AddOrUpdate(session);
@@ -31,10 +39,12 @@ public sealed class ReceiptMainMessageService
 
     public async Task SendToSlashCommandAsync(ReceiptSessionState session, SocketSlashCommand command)
     {
-        var sentMessage = await command.FollowupAsync(
-            embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
-            components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-            ephemeral: false);
+        var sentMessage = await ExecuteDiscordRetryAsync(
+            operationName: "send_main_message_to_slash_followup",
+            operation: () => command.FollowupAsync(
+                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
+                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
+                ephemeral: false));
 
         ApplyPublishedMessageMetadata(
             session,
@@ -59,11 +69,13 @@ public sealed class ReceiptMainMessageService
         }
 
         var renderedMessage = ReceiptMessageRenderer.RenderReceiptMessage(session);
-        await message.ModifyAsync(properties =>
-        {
-            properties.Embed = renderedMessage.Embed;
-            properties.Components = ReceiptInteractionCustomIds.BuildMainMessageComponents(session);
-        });
+        await ExecuteDiscordRetryAsync(
+            operationName: "refresh_main_message",
+            operation: () => message.ModifyAsync(properties =>
+            {
+                properties.Embed = renderedMessage.Embed;
+                properties.Components = ReceiptInteractionCustomIds.BuildMainMessageComponents(session);
+            }));
 
         session.MainChannel = channel;
         _sessionStore.AddOrUpdate(session);
@@ -71,10 +83,12 @@ public sealed class ReceiptMainMessageService
 
     public async Task PublishForComponentAsync(ReceiptSessionState session, SocketMessageComponent component)
     {
-        var replacement = await component.FollowupAsync(
-            embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
-            components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-            ephemeral: false);
+        var replacement = await ExecuteDiscordRetryAsync(
+            operationName: "publish_main_message_for_component",
+            operation: () => component.FollowupAsync(
+                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
+                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
+                ephemeral: false));
 
         ApplyPublishedMessageMetadata(
             session,
@@ -86,10 +100,12 @@ public sealed class ReceiptMainMessageService
 
     public async Task PublishForModalAsync(ReceiptSessionState session, SocketModal modal)
     {
-        var replacement = await modal.FollowupAsync(
-            embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
-            components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-            ephemeral: false);
+        var replacement = await ExecuteDiscordRetryAsync(
+            operationName: "publish_main_message_for_modal",
+            operation: () => modal.FollowupAsync(
+                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
+                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
+                ephemeral: false));
 
         ApplyPublishedMessageMetadata(
             session,
@@ -173,5 +189,67 @@ public sealed class ReceiptMainMessageService
                 $"메인 메시지 채널에 접근할 수 없습니다. ChannelId={restChannelId}",
                 ex);
         }
+    }
+
+    private async Task ExecuteDiscordRetryAsync(
+        string operationName,
+        Func<Task> operation,
+        CancellationToken cancellationToken = default)
+    {
+        await ExecuteDiscordRetryAsync<object?>(
+            operationName,
+            async () =>
+            {
+                await operation();
+                return null;
+            },
+            cancellationToken);
+    }
+
+    private async Task<T> ExecuteDiscordRetryAsync<T>(
+        string operationName,
+        Func<Task<T>> operation,
+        CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                return await operation();
+            }
+            catch (Discord.Net.HttpException ex) when (IsRetryableDiscordHttpException(ex) && attempt < MaxDiscordRetryAttempts)
+            {
+                var delay = GetRetryDelay(attempt);
+                _logger.LogWarning(
+                    ex,
+                    "Discord API call failed temporarily. Operation={Operation} Attempt={Attempt} DelayMs={DelayMs} HttpCode={HttpCode} DiscordCode={DiscordCode}",
+                    operationName,
+                    attempt,
+                    delay.TotalMilliseconds,
+                    ex.HttpCode,
+                    ex.DiscordCode);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
+    private static bool IsRetryableDiscordHttpException(Discord.Net.HttpException ex)
+    {
+        return ex.HttpCode is HttpStatusCode.TooManyRequests
+            or HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout;
+    }
+
+    private static TimeSpan GetRetryDelay(int attempt)
+    {
+        return attempt switch
+        {
+            1 => TimeSpan.FromMilliseconds(400),
+            2 => TimeSpan.FromMilliseconds(1200),
+            _ => TimeSpan.FromSeconds(2)
+        };
     }
 }

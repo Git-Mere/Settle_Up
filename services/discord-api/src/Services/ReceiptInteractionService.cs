@@ -149,6 +149,12 @@ public sealed class ReceiptInteractionService
             BuildSelectionPrompt(mode, session, page),
             BuildSelectionComponents(session, component.User.Id.ToString(), mode, page));
 
+        if (!updateExistingMessage)
+        {
+            session.ActivePrivatePanelInteractions[component.Id] = component;
+            _sessionStore.AddOrUpdate(session);
+        }
+
         return mode switch
         {
             ReceiptSelectionMode.Assign => "selection_menu_opened",
@@ -182,7 +188,7 @@ public sealed class ReceiptInteractionService
             properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Assign, page);
         });
 
-        await _mainMessageService.PublishForComponentAsync(session, component);
+        await _mainMessageService.RefreshAsync(session);
         return "selection_updated";
     }
 
@@ -216,7 +222,7 @@ public sealed class ReceiptInteractionService
             properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Remove, nextPage);
         });
 
-        await _mainMessageService.PublishForComponentAsync(session, component);
+        await _mainMessageService.RefreshAsync(session);
         return "item_removed";
     }
 
@@ -348,8 +354,11 @@ public sealed class ReceiptInteractionService
         await modal.DeferAsync(ephemeral: true);
         ReceiptSessionStateService.AddManualItem(session, itemName.Trim(), itemPrice, quantity);
         _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.PublishForModalAsync(session, modal);
-        await modal.DeleteOriginalResponseAsync();
+        await _mainMessageService.RefreshAsync(session);
+        await modal.ModifyOriginalResponseAsync(properties =>
+        {
+            properties.Content = "아이템을 추가했습니다.";
+        });
 
         return "item_added";
     }
@@ -398,8 +407,11 @@ public sealed class ReceiptInteractionService
         session.PendingEditItemIds.Remove(editToken);
         await modal.DeferAsync(ephemeral: true);
         _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.PublishForModalAsync(session, modal);
-        await modal.DeleteOriginalResponseAsync();
+        await _mainMessageService.RefreshAsync(session);
+        await modal.ModifyOriginalResponseAsync(properties =>
+        {
+            properties.Content = "아이템을 수정했습니다.";
+        });
 
         return "item_edited";
     }
@@ -429,7 +441,8 @@ public sealed class ReceiptInteractionService
         session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
         _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.PublishForComponentAsync(session, component);
+        await _mainMessageService.RefreshAsync(session);
+        await ClosePrivatePanelsAsync(session);
         await component.DeleteOriginalResponseAsync();
 
         return "confirmed";
@@ -508,6 +521,28 @@ public sealed class ReceiptInteractionService
         }
 
         await component.RespondAsync(content, components: components, ephemeral: true);
+    }
+
+    private static async Task ClosePrivatePanelsAsync(ReceiptSessionState session)
+    {
+        if (session.ActivePrivatePanelInteractions.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var entry in session.ActivePrivatePanelInteractions.ToArray())
+        {
+            try
+            {
+                await entry.Value.DeleteOriginalResponseAsync();
+            }
+            catch
+            {
+                // Ignore cleanup failures for stale/expired interaction tokens.
+            }
+        }
+
+        session.ActivePrivatePanelInteractions.Clear();
     }
 
     private static string BuildSelectionPrompt(ReceiptSelectionMode mode, ReceiptSessionState session, int page)
