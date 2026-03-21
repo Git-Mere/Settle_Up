@@ -143,6 +143,11 @@ public sealed class ReceiptInteractionService
         UpsertUserDisplayName(session, component.User);
         _sessionStore.AddOrUpdate(session);
 
+        if (!updateExistingMessage)
+        {
+            await ReplaceExistingPrivatePanelAsync(session, component.User.Id, mode);
+        }
+
         await RespondOrUpdateAsync(
             component,
             updateExistingMessage,
@@ -151,7 +156,7 @@ public sealed class ReceiptInteractionService
 
         if (!updateExistingMessage)
         {
-            session.ActivePrivatePanelInteractions[component.Id] = component;
+            session.ActivePrivatePanelInteractions[BuildPrivatePanelKey(component.User.Id, mode)] = component;
             _sessionStore.AddOrUpdate(session);
         }
 
@@ -436,14 +441,17 @@ public sealed class ReceiptInteractionService
             return "confirm_blocked";
         }
 
-        await component.DeferAsync(ephemeral: true);
+        await component.DeferAsync();
         session.IsConfirmed = true;
         session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
         _sessionStore.AddOrUpdate(session);
         await _mainMessageService.RefreshAsync(session);
         await ClosePrivatePanelsAsync(session);
-        await component.DeleteOriginalResponseAsync();
+        await component.ModifyOriginalResponseAsync(properties =>
+        {
+            properties.Content = "정산을 확정했습니다. 공개 체크 메시지를 확인해 주세요.";
+        });
 
         return "confirmed";
     }
@@ -530,11 +538,11 @@ public sealed class ReceiptInteractionService
             return;
         }
 
-        foreach (var entry in session.ActivePrivatePanelInteractions.ToArray())
+        foreach (var interaction in session.ActivePrivatePanelInteractions.Values.Distinct().ToArray())
         {
             try
             {
-                await entry.Value.DeleteOriginalResponseAsync();
+                await interaction.DeleteOriginalResponseAsync();
             }
             catch
             {
@@ -543,6 +551,34 @@ public sealed class ReceiptInteractionService
         }
 
         session.ActivePrivatePanelInteractions.Clear();
+    }
+
+    private static async Task ReplaceExistingPrivatePanelAsync(
+        ReceiptSessionState session,
+        ulong userId,
+        ReceiptSelectionMode mode)
+    {
+        var key = BuildPrivatePanelKey(userId, mode);
+        if (!session.ActivePrivatePanelInteractions.TryGetValue(key, out var existingInteraction))
+        {
+            return;
+        }
+
+        try
+        {
+            await existingInteraction.DeleteOriginalResponseAsync();
+        }
+        catch
+        {
+            // Ignore cleanup failures for stale/expired interaction tokens.
+        }
+
+        session.ActivePrivatePanelInteractions.Remove(key);
+    }
+
+    private static string BuildPrivatePanelKey(ulong userId, ReceiptSelectionMode mode)
+    {
+        return $"{mode}:{userId}";
     }
 
     private static string BuildSelectionPrompt(ReceiptSelectionMode mode, ReceiptSessionState session, int page)
