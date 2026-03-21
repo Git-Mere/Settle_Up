@@ -5,18 +5,24 @@ public sealed class ReceiptDraftSessionService
 {
     private readonly DiscordSocketClient _discordClient;
     private readonly ReceiptSessionStore _sessionStore;
+    private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
+    private readonly ReceiptMainMessageDebounceService _debounceService;
     private readonly ILogger<ReceiptDraftSessionService> _logger;
 
     public ReceiptDraftSessionService(
         DiscordSocketClient discordClient,
         ReceiptSessionStore sessionStore,
+        ReceiptSessionLockManager lockManager,
         ReceiptMainMessageService mainMessageService,
+        ReceiptMainMessageDebounceService debounceService,
         ILogger<ReceiptDraftSessionService> logger)
     {
         _discordClient = discordClient;
         _sessionStore = sessionStore;
+        _lockManager = lockManager;
         _mainMessageService = mainMessageService;
+        _debounceService = debounceService;
         _logger = logger;
     }
 
@@ -29,23 +35,26 @@ public sealed class ReceiptDraftSessionService
         CancellationToken cancellationToken)
     {
         var tempReceiptId = $"pending-{Guid.NewGuid():N}";
-        var session = ReceiptSessionStateService.CreatePendingUploadSession(
-            tempReceiptId,
-            blobUrl,
-            uploadedByUserId,
-            uploadedByDisplayName,
-            paymentContact);
+        await _lockManager.ExecuteAsync(tempReceiptId, async () =>
+        {
+            var session = ReceiptSessionStateService.CreatePendingUploadSession(
+                tempReceiptId,
+                blobUrl,
+                uploadedByUserId,
+                uploadedByDisplayName,
+                paymentContact);
 
-        session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
+            session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
 
-        await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
+            await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
 
-        _logger.LogInformation(
-            "Pending receipt session created. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId}",
-            session.ReceiptId,
-            uploadedByUserId,
-            session.MainChannelId,
-            session.MainMessageId);
+            _logger.LogInformation(
+                "Pending receipt session created. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId}",
+                session.ReceiptId,
+                uploadedByUserId,
+                session.MainChannelId,
+                session.MainMessageId);
+        }, cancellationToken);
     }
 
     public Task CreateOrUpdateSessionFromDraftAsync(
@@ -79,42 +88,48 @@ public sealed class ReceiptDraftSessionService
             ?? throw new InvalidOperationException("uploadedByUserId is required.");
 
         var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId);
-        var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl)
-            ?? ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
+        var lockKey = ResolveLockKey(payload, receiptId);
 
-        ReceiptSessionStateService.ApplyDraftPayload(session, payload, displayName);
-        session.UserDisplayNames[uploadedByUserId] = displayName;
-        session.UploadedByDisplayName = displayName;
-        session.MainChannel ??= targetChannel;
-        session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _lockManager.ExecuteAsync(lockKey, async () =>
+        {
+            var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl)
+                ?? ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
 
-        if (session.MainChannelId is not null && session.MainMessageId is not null)
-        {
-            await _mainMessageService.RefreshAsync(session);
-        }
-        else if (slashCommand is not null)
-        {
-            session.MainChannel ??= _mainMessageService.ResolveSlashCommandChannel(slashCommand);
-            await _mainMessageService.SendToSlashCommandAsync(session, slashCommand);
-        }
-        else if (targetChannel is not null)
-        {
-            await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
-        }
-        else
-        {
-            throw new InvalidOperationException("기존 채널 세션이 없으면 draft 메시지를 채널에 보낼 수 없습니다.");
-        }
+            ReceiptSessionStateService.ApplyDraftPayload(session, payload, displayName);
+            session.UserDisplayNames[uploadedByUserId] = displayName;
+            session.UploadedByDisplayName = displayName;
+            session.MainChannel ??= targetChannel;
+            session.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
-        _sessionStore.AddOrUpdate(session, previousReceiptId, previousBlobUrl);
+            if (session.MainChannelId is not null && session.MainMessageId is not null)
+            {
+                _debounceService.CancelRefresh(session.ReceiptId);
+                await _mainMessageService.RefreshAsync(session);
+            }
+            else if (slashCommand is not null)
+            {
+                session.MainChannel ??= _mainMessageService.ResolveSlashCommandChannel(slashCommand);
+                await _mainMessageService.SendToSlashCommandAsync(session, slashCommand);
+            }
+            else if (targetChannel is not null)
+            {
+                await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
+            }
+            else
+            {
+                throw new InvalidOperationException("기존 채널 세션이 없으면 draft 메시지를 채널에 보낼 수 없습니다.");
+            }
 
-        _logger.LogInformation(
-            "Receipt session upserted from draft. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId} ItemCount={ItemCount}",
-            session.ReceiptId,
-            uploadedByUserId,
-            session.MainChannelId,
-            session.MainMessageId,
-            session.Items.Count);
+            _sessionStore.AddOrUpdate(session, previousReceiptId, previousBlobUrl);
+
+            _logger.LogInformation(
+                "Receipt session upserted from draft. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId} ItemCount={ItemCount}",
+                session.ReceiptId,
+                uploadedByUserId,
+                session.MainChannelId,
+                session.MainMessageId,
+                session.Items.Count);
+        }, cancellationToken);
     }
 
     private ReceiptSessionState? FindExistingSession(
@@ -159,5 +174,11 @@ public sealed class ReceiptDraftSessionService
         }
 
         return user.GlobalName ?? user.Username;
+    }
+
+    private string ResolveLockKey(ReceiptDraftNotificationRequest payload, string receiptId)
+    {
+        var existingSession = FindExistingSession(payload, receiptId, out _, out _);
+        return existingSession?.ReceiptId ?? receiptId;
     }
 }

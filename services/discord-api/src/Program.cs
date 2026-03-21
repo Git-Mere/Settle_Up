@@ -31,8 +31,10 @@ builder.Services.AddSingleton(sp => new DiscordSocketClient(sp.GetRequiredServic
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<BlobUploaderProvider>();
 builder.Services.AddSingleton<ReceiptSessionStore>();
+builder.Services.AddSingleton<ReceiptSessionLockManager>();
 builder.Services.AddSingleton<ReceiptDraftTestDataLoader>();
 builder.Services.AddSingleton<ReceiptMainMessageService>();
+builder.Services.AddSingleton<ReceiptMainMessageDebounceService>();
 builder.Services.AddSingleton<ReceiptDraftSessionService>();
 builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();

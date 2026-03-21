@@ -4,14 +4,20 @@ using Discord.WebSocket;
 public sealed class ReceiptInteractionService
 {
     private readonly ReceiptSessionStore _sessionStore;
+    private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
+    private readonly ReceiptMainMessageDebounceService _debounceService;
 
     public ReceiptInteractionService(
         ReceiptSessionStore sessionStore,
-        ReceiptMainMessageService mainMessageService)
+        ReceiptSessionLockManager lockManager,
+        ReceiptMainMessageService mainMessageService,
+        ReceiptMainMessageDebounceService debounceService)
     {
         _sessionStore = sessionStore;
+        _lockManager = lockManager;
         _mainMessageService = mainMessageService;
+        _debounceService = debounceService;
     }
 
     public async Task<string?> HandleButtonAsync(SocketMessageComponent component)
@@ -121,158 +127,170 @@ public sealed class ReceiptInteractionService
         int page,
         bool updateExistingMessage = false)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await RespondOrUpdateAsync(component, updateExistingMessage, "해당 영수증 세션을 찾을 수 없습니다.", null);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await RespondOrUpdateAsync(component, updateExistingMessage, "해당 영수증 세션을 찾을 수 없습니다.", null);
+                return "session_not_found";
+            }
 
-        if (!session.IsDraftReady && mode != ReceiptSelectionMode.Assign)
-        {
-            await RespondOrUpdateAsync(component, updateExistingMessage, "영수증 분석이 아직 끝나지 않았습니다.", null);
-            return "draft_not_ready";
-        }
+            if (!session.IsDraftReady && mode != ReceiptSelectionMode.Assign)
+            {
+                await RespondOrUpdateAsync(component, updateExistingMessage, "영수증 분석이 아직 끝나지 않았습니다.", null);
+                return "draft_not_ready";
+            }
 
-        if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit) &&
-            !IsOwner(session, component.User.Id))
-        {
-            await RespondOrUpdateAsync(component, updateExistingMessage, "정산자만 이 기능을 사용할 수 있습니다.", null);
-            return "forbidden_user";
-        }
+            if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit) &&
+                !IsOwner(session, component.User.Id))
+            {
+                await RespondOrUpdateAsync(component, updateExistingMessage, "정산자만 이 기능을 사용할 수 있습니다.", null);
+                return "forbidden_user";
+            }
 
-        UpsertUserDisplayName(session, component.User);
-        _sessionStore.AddOrUpdate(session);
-
-        if (!updateExistingMessage)
-        {
-            await ReplaceExistingPrivatePanelAsync(session, component.User.Id, mode);
-        }
-
-        await RespondOrUpdateAsync(
-            component,
-            updateExistingMessage,
-            BuildSelectionPrompt(mode, session, page),
-            BuildSelectionComponents(session, component.User.Id.ToString(), mode, page));
-
-        if (!updateExistingMessage)
-        {
-            session.ActivePrivatePanelInteractions[BuildPrivatePanelKey(component.User.Id, mode)] = component;
+            UpsertUserDisplayName(session, component.User);
             _sessionStore.AddOrUpdate(session);
-        }
 
-        return mode switch
-        {
-            ReceiptSelectionMode.Assign => "selection_menu_opened",
-            ReceiptSelectionMode.Remove => "remove_menu_opened",
-            ReceiptSelectionMode.Edit => "edit_menu_opened",
-            _ => "menu_opened"
-        };
+            if (!updateExistingMessage)
+            {
+                await ReplaceExistingPrivatePanelAsync(session, component.User.Id, mode);
+            }
+
+            await RespondOrUpdateAsync(
+                component,
+                updateExistingMessage,
+                BuildSelectionPrompt(mode, session, page),
+                BuildSelectionComponents(session, component.User.Id.ToString(), mode, page));
+
+            if (!updateExistingMessage)
+            {
+                session.ActivePrivatePanelInteractions[BuildPrivatePanelKey(component.User.Id, mode)] = component;
+                _sessionStore.AddOrUpdate(session);
+            }
+
+            return mode switch
+            {
+                ReceiptSelectionMode.Assign => "selection_menu_opened",
+                ReceiptSelectionMode.Remove => "remove_menu_opened",
+                ReceiptSelectionMode.Edit => "edit_menu_opened",
+                _ => "menu_opened"
+            };
+        });
     }
 
     private async Task<string> HandleAssignmentSelectionAsync(SocketMessageComponent component, string receiptId, int page)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        UpsertUserDisplayName(session, component.User);
-        var pageItems = ReceiptSessionStateService.GetPageItems(session, page);
-        ReceiptSessionStateService.ReplaceSelectionsForPage(
-            session,
-            component.User.Id.ToString(),
-            pageItems.Select(item => item.Id).ToArray(),
-            component.Data.Values);
+            UpsertUserDisplayName(session, component.User);
+            var pageItems = ReceiptSessionStateService.GetPageItems(session, page);
+            ReceiptSessionStateService.ReplaceSelectionsForPage(
+                session,
+                component.User.Id.ToString(),
+                pageItems.Select(item => item.Id).ToArray(),
+                component.Data.Values);
 
-        _sessionStore.AddOrUpdate(session);
+            _sessionStore.AddOrUpdate(session);
 
-        await component.UpdateAsync(properties =>
-        {
-            properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Assign, session, page);
-            properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Assign, page);
+            await component.UpdateAsync(properties =>
+            {
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Assign, session, page);
+                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Assign, page);
+            });
+
+            _debounceService.ScheduleRefresh(receiptId);
+            return "selection_updated";
         });
-
-        await _mainMessageService.RefreshAsync(session);
-        return "selection_updated";
     }
 
     private async Task<string> HandleRemoveSelectionAsync(SocketMessageComponent component, string receiptId, int page)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        if (!IsOwner(session, component.User.Id))
-        {
-            await component.RespondAsync("정산자만 아이템을 제거할 수 있습니다.", ephemeral: true);
-            return "forbidden_user";
-        }
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("정산자만 아이템을 제거할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
 
-        var itemId = component.Data.Values.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(itemId) || !ReceiptSessionStateService.RemoveItem(session, itemId))
-        {
-            await component.RespondAsync("제거할 아이템을 찾을 수 없습니다.", ephemeral: true);
-            return "remove_item_not_found";
-        }
+            var itemId = component.Data.Values.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(itemId) || !ReceiptSessionStateService.RemoveItem(session, itemId))
+            {
+                await component.RespondAsync("제거할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                return "remove_item_not_found";
+            }
 
-        _sessionStore.AddOrUpdate(session);
-        var nextPage = Math.Min(page, ReceiptSessionStateService.GetTotalPages(session) - 1);
+            _sessionStore.AddOrUpdate(session);
+            var nextPage = Math.Min(page, ReceiptSessionStateService.GetTotalPages(session) - 1);
 
-        await component.UpdateAsync(properties =>
-        {
-            properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Remove, session, nextPage);
-            properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Remove, nextPage);
+            await component.UpdateAsync(properties =>
+            {
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Remove, session, nextPage);
+                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Remove, nextPage);
+            });
+
+            _debounceService.ScheduleRefresh(receiptId);
+            return "item_removed";
         });
-
-        await _mainMessageService.RefreshAsync(session);
-        return "item_removed";
     }
 
     private async Task<string> HandleEditSelectionAsync(SocketMessageComponent component, string receiptId, int page)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        if (!IsOwner(session, component.User.Id))
-        {
-            await component.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
-            return "forbidden_user";
-        }
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
 
-        var itemId = component.Data.Values.FirstOrDefault();
-        var item = session.Items.SingleOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
-        if (item is null)
-        {
-            await component.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
-            return "edit_item_not_found";
-        }
+            var itemId = component.Data.Values.FirstOrDefault();
+            var item = session.Items.SingleOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+            if (item is null)
+            {
+                await component.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                return "edit_item_not_found";
+            }
 
-        var modal = new ModalBuilder()
-            .WithTitle("아이템 수정")
-            .WithCustomId($"{ReceiptInteractionCustomIds.EditItemModalPrefix}:{receiptId}:{CreateEditToken(session, item.Id)}")
-            .AddTextInput(
-                label: "아이템 이름",
-                customId: ReceiptInteractionCustomIds.ItemNameInputCustomId,
-                style: TextInputStyle.Short,
-                required: true,
-                value: item.Name,
-                maxLength: 100)
-            .AddTextInput(
-                label: "아이템 가격",
-                customId: ReceiptInteractionCustomIds.ItemPriceInputCustomId,
-                style: TextInputStyle.Short,
-                required: true,
-                value: item.Amount.ToString("0.00"),
-                maxLength: 20);
+            var modal = new ModalBuilder()
+                .WithTitle("아이템 수정")
+                .WithCustomId($"{ReceiptInteractionCustomIds.EditItemModalPrefix}:{receiptId}:{CreateEditToken(session, item.Id)}")
+                .AddTextInput(
+                    label: "아이템 이름",
+                    customId: ReceiptInteractionCustomIds.ItemNameInputCustomId,
+                    style: TextInputStyle.Short,
+                    required: true,
+                    value: item.Name,
+                    maxLength: 100)
+                .AddTextInput(
+                    label: "아이템 가격",
+                    customId: ReceiptInteractionCustomIds.ItemPriceInputCustomId,
+                    style: TextInputStyle.Short,
+                    required: true,
+                    value: item.Amount.ToString("0.00"),
+                    maxLength: 20);
 
-        await component.RespondWithModalAsync(modal.Build());
-        return "edit_modal_opened";
+            await component.RespondWithModalAsync(modal.Build());
+            return "edit_modal_opened";
+        });
     }
 
     private async Task<string> HandleAddItemButtonAsync(SocketMessageComponent component, string receiptId)
@@ -320,140 +338,150 @@ public sealed class ReceiptInteractionService
 
     private async Task<string> HandleAddItemModalAsync(SocketModal modal, string receiptId)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        if (!IsOwner(session, modal.User.Id))
-        {
-            await modal.RespondAsync("정산자만 아이템을 추가할 수 있습니다.", ephemeral: true);
-            return "forbidden_user";
-        }
+            if (!IsOwner(session, modal.User.Id))
+            {
+                await modal.RespondAsync("정산자만 아이템을 추가할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
 
-        var itemName = GetModalValue(modal, ReceiptInteractionCustomIds.ItemNameInputCustomId);
-        var itemPriceText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemPriceInputCustomId);
-        var itemQuantityText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemQuantityInputCustomId);
+            var itemName = GetModalValue(modal, ReceiptInteractionCustomIds.ItemNameInputCustomId);
+            var itemPriceText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemPriceInputCustomId);
+            var itemQuantityText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemQuantityInputCustomId);
 
-        if (string.IsNullOrWhiteSpace(itemName))
-        {
-            await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
-            return "invalid_item_name";
-        }
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
+                return "invalid_item_name";
+            }
 
-        if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
-        {
-            await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
-            return "invalid_item_price";
-        }
+            if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
+            {
+                await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
+                return "invalid_item_price";
+            }
 
-        var quantity = 1;
-        if (!string.IsNullOrWhiteSpace(itemQuantityText) &&
-            (!int.TryParse(itemQuantityText, out quantity) || quantity <= 0))
-        {
-            await modal.RespondAsync("수량은 1 이상의 정수로 입력해 주세요.", ephemeral: true);
-            return "invalid_item_quantity";
-        }
+            var quantity = 1;
+            if (!string.IsNullOrWhiteSpace(itemQuantityText) &&
+                (!int.TryParse(itemQuantityText, out quantity) || quantity <= 0))
+            {
+                await modal.RespondAsync("수량은 1 이상의 정수로 입력해 주세요.", ephemeral: true);
+                return "invalid_item_quantity";
+            }
 
-        await modal.DeferAsync(ephemeral: true);
-        ReceiptSessionStateService.AddManualItem(session, itemName.Trim(), itemPrice, quantity);
-        _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.RefreshAsync(session);
-        await modal.ModifyOriginalResponseAsync(properties =>
-        {
-            properties.Content = "아이템을 추가했습니다.";
+            await modal.DeferAsync(ephemeral: true);
+            ReceiptSessionStateService.AddManualItem(session, itemName.Trim(), itemPrice, quantity);
+            _sessionStore.AddOrUpdate(session);
+            _debounceService.ScheduleRefresh(receiptId);
+            await modal.ModifyOriginalResponseAsync(properties =>
+            {
+                properties.Content = "아이템을 추가했습니다.";
+            });
+
+            return "item_added";
         });
-
-        return "item_added";
     }
 
     private async Task<string> HandleEditItemModalAsync(SocketModal modal, string receiptId, string editToken)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        if (!IsOwner(session, modal.User.Id))
-        {
-            await modal.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
-            return "forbidden_user";
-        }
+            if (!IsOwner(session, modal.User.Id))
+            {
+                await modal.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
 
-        if (!session.PendingEditItemIds.TryGetValue(editToken, out var itemId))
-        {
-            await modal.RespondAsync("수정 대상 아이템 정보를 찾을 수 없습니다. 다시 시도해 주세요.", ephemeral: true);
-            return "edit_item_token_not_found";
-        }
+            if (!session.PendingEditItemIds.TryGetValue(editToken, out var itemId))
+            {
+                await modal.RespondAsync("수정 대상 아이템 정보를 찾을 수 없습니다. 다시 시도해 주세요.", ephemeral: true);
+                return "edit_item_token_not_found";
+            }
 
-        var itemName = GetModalValue(modal, ReceiptInteractionCustomIds.ItemNameInputCustomId);
-        var itemPriceText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemPriceInputCustomId);
+            var itemName = GetModalValue(modal, ReceiptInteractionCustomIds.ItemNameInputCustomId);
+            var itemPriceText = GetModalValue(modal, ReceiptInteractionCustomIds.ItemPriceInputCustomId);
 
-        if (string.IsNullOrWhiteSpace(itemName))
-        {
-            await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
-            return "invalid_item_name";
-        }
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
+                return "invalid_item_name";
+            }
 
-        if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
-        {
-            await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
-            return "invalid_item_price";
-        }
+            if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
+            {
+                await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
+                return "invalid_item_price";
+            }
 
-        if (!ReceiptSessionStateService.UpdateItem(session, itemId, itemName.Trim(), itemPrice))
-        {
-            await modal.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
-            return "edit_item_not_found";
-        }
+            if (!ReceiptSessionStateService.UpdateItem(session, itemId, itemName.Trim(), itemPrice))
+            {
+                await modal.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                return "edit_item_not_found";
+            }
 
-        session.PendingEditItemIds.Remove(editToken);
-        await modal.DeferAsync(ephemeral: true);
-        _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.RefreshAsync(session);
-        await modal.ModifyOriginalResponseAsync(properties =>
-        {
-            properties.Content = "아이템을 수정했습니다.";
+            session.PendingEditItemIds.Remove(editToken);
+            await modal.DeferAsync(ephemeral: true);
+            _sessionStore.AddOrUpdate(session);
+            _debounceService.ScheduleRefresh(receiptId);
+            await modal.ModifyOriginalResponseAsync(properties =>
+            {
+                properties.Content = "아이템을 수정했습니다.";
+            });
+
+            return "item_edited";
         });
-
-        return "item_edited";
     }
 
     private async Task<string> HandleConfirmAsync(SocketMessageComponent component, string receiptId)
     {
-        if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
-            await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
-            return "session_not_found";
-        }
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
 
-        if (!IsOwner(session, component.User.Id))
-        {
-            await component.RespondAsync("confirm은 정산자만 누를 수 있습니다.", ephemeral: true);
-            return "forbidden_user";
-        }
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("confirm은 정산자만 누를 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
 
-        if (!ReceiptSessionStateService.CanConfirm(session))
-        {
-            await component.RespondAsync("Unassigned 아이템이 모두 배정되어야 confirm할 수 있습니다.", ephemeral: true);
-            return "confirm_blocked";
-        }
+            if (!ReceiptSessionStateService.CanConfirm(session))
+            {
+                await component.RespondAsync("Unassigned 아이템이 모두 배정되어야 confirm할 수 있습니다.", ephemeral: true);
+                return "confirm_blocked";
+            }
 
-        await component.DeferAsync();
-        session.IsConfirmed = true;
-        session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
-        session.UpdatedAtUtc = DateTimeOffset.UtcNow;
-        _sessionStore.AddOrUpdate(session);
-        await _mainMessageService.RefreshAsync(session);
-        await ClosePrivatePanelsAsync(session);
-        await component.ModifyOriginalResponseAsync(properties =>
-        {
-            properties.Content = "정산을 확정했습니다. 공개 체크 메시지를 확인해 주세요.";
+            await component.DeferAsync();
+            _debounceService.CancelRefresh(receiptId);
+            session.IsConfirmed = true;
+            session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
+            session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            _sessionStore.AddOrUpdate(session);
+            await _mainMessageService.RefreshAsync(session);
+            await ClosePrivatePanelsAsync(session);
+            await component.ModifyOriginalResponseAsync(properties =>
+            {
+                properties.Content = "정산을 확정했습니다. 공개 체크 메시지를 확인해 주세요.";
+            });
+
+            return "confirmed";
         });
-
-        return "confirmed";
     }
 
     private MessageComponent BuildSelectionComponents(

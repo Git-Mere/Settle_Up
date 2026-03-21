@@ -19,6 +19,7 @@ public sealed class ReceiptSessionState
     public Dictionary<string, string> PendingEditItemIds { get; init; } = new(StringComparer.Ordinal);
     public Dictionary<string, IDiscordInteraction> ActivePrivatePanelInteractions { get; init; } = new(StringComparer.Ordinal);
     public IMessageChannel? MainChannel { get; set; }
+    public IUserMessage? MainMessage { get; set; }
     public ulong? MainMessageId { get; set; }
     public ulong? MainChannelId { get; set; }
     public bool IsDraftReady { get; set; }

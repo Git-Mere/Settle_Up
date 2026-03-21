@@ -62,7 +62,14 @@ public sealed class ReceiptMainMessageService
         }
 
         var channel = await ResolveMainChannelAsync(session);
-        var message = await channel.GetMessageAsync(session.MainMessageId.Value) as IUserMessage;
+        var message = session.MainMessage;
+        if (message is null)
+        {
+            message = await ExecuteDiscordRetryAsync(
+                operationName: "resolve_main_message",
+                operation: async () => await channel.GetMessageAsync(session.MainMessageId.Value) as IUserMessage);
+        }
+
         if (message is null)
         {
             throw new InvalidOperationException("Main message could not be resolved.");
@@ -78,6 +85,7 @@ public sealed class ReceiptMainMessageService
             }));
 
         session.MainChannel = channel;
+        session.MainMessage = message;
         _sessionStore.AddOrUpdate(session);
     }
 
@@ -151,6 +159,7 @@ public sealed class ReceiptMainMessageService
 
         session.MainMessageId = message.Id;
         session.MainChannel = resolvedChannel;
+        session.MainMessage = message;
         session.MainChannelId = resolvedChannel?.Id ?? session.MainChannelId;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
     }
