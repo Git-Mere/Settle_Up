@@ -146,13 +146,28 @@ public sealed class ReceiptProcessingService
             return null;
         }
 
-        // Expected pattern: <container>/receipts/{yyyy}/{MM}/{dd}/{userId}/{file}
-        if (segments.Length >= 7 && string.Equals(segments[1], "receipts", StringComparison.OrdinalIgnoreCase))
+        // Current upload pattern:
+        //   <container>/{yyyy}/{MM}/{dd}/{userId}/{file}
+        if (segments.Length >= 6 && IsYearSegment(segments[1]))
+        {
+            return segments[4];
+        }
+
+        // Backward-compatible fallback for an older expected pattern:
+        //   <container>/receipts/{yyyy}/{MM}/{dd}/{userId}/{file}
+        if (segments.Length >= 7 &&
+            string.Equals(segments[1], "receipts", StringComparison.OrdinalIgnoreCase) &&
+            IsYearSegment(segments[2]))
         {
             return segments[5];
         }
 
         return null;
+    }
+
+    private static bool IsYearSegment(string value)
+    {
+        return value.Length == 4 && value.All(char.IsDigit);
     }
 
     private static ReceiptDocument BuildReceiptDocument(

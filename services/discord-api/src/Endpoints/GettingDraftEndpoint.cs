@@ -76,6 +76,11 @@ public static class GettingDraftEndpoint
             return "draftId is invalid";
         }
 
+        if (string.IsNullOrWhiteSpace(payload.UploadedByUserId))
+        {
+            return "uploadedByUserId is required";
+        }
+
         return null;
     }
 
