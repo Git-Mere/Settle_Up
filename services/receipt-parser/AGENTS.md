@@ -77,6 +77,14 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - `Microsoft.Storage.BlobCreated`에서 `url` 추출 실패 시 저장/발행을 진행하지 않는다.
 - `discord-api` callback URL 설정이 없으면 전송을 진행하지 않는다.
 - Blob 경로 패턴에서 `uploadedByUserId` 추출 규칙을 바꿀 경우 `discord-api`와 함께 계약을 갱신한다.
+- 현재 실제 Blob URL 패턴은 `receipts/{yyyy}/{MM}/{dd}/{userId}/{file}` 전제로 처리한다. parser의 `uploadedByUserId` 추출은 이 패턴에 의존하므로 업로드 경로가 바뀌면 parser와 `discord-api` validation을 같이 수정해야 한다.
+
+## Current Service Notes
+- parser는 현재 Blob URL에서 `uploadedByUserId`를 추출해 `discord-api` callback payload에 포함한다.
+- 최근 Azure 실배포 테스트에서 `uploadedByUserId` 누락으로 `discord-api /getting_draft`가 500을 반환했던 이슈가 있었고, parser의 Blob path 해석 버그를 수정했다.
+- 현재는 실제 경로(`receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`)와 예전 기대 경로 fallback 둘 다 읽도록 처리했다.
+- 다음 세션에서 callback 문제가 다시 나오면 가장 먼저 `ReceiptProcessingService.TryExtractUploadedByUserId(...)`와 `discord-api`의 `/getting_draft` validation을 같이 봐야 한다.
+- 현재 callback 계약상 `uploadedByUserId`는 사실상 필수다. parser 쪽 추출 규칙을 바꾸면 `discord-api` validation과 owner 권한 모델도 같이 확인해야 한다.
 
 ## Security Guidelines
 - 외부 이벤트 payload는 신뢰하지 않고 항상 검증한다.

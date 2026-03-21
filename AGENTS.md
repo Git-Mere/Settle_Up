@@ -85,7 +85,11 @@ If making changes:
 - if build, Docker, or shared-project behavior changes, verify the matching workflow file as part of the same change
 
 ## Current Project Notes
-- `discord-api`는 현재 업로드 pending 메시지, parser draft 수신, 체크 섹션 embed, item selection/add/remove/edit, confirm embed까지 로컬 기준 동작한다.
-- `discord-api`의 receipt UI는 현재 "기존 공개 메시지 안정적 수정" 대신 "새 공개 메시지 발행" 전략을 기본으로 사용한다. 이건 현재 서버/권한 환경에서 Discord REST channel lookup이 `50001 Missing Access`로 자주 실패하기 때문이다.
-- 따라서 다음 세션에서 `discord-api` 작업을 이어갈 때 가장 먼저 볼 포인트는 공개 체크 메시지 정리 전략과 Discord 채널 접근 제약이다.
-- `receipt-parser` -> `discord-api` HTTP callback 경로는 이미 연결돼 있고, 로컬 테스트에서는 `/test`가 parser callback 이후 UI를 재현하는 기준 경로다.
+- `discord-api`는 현재 업로드 pending 메시지, parser draft 수신, 체크 섹션 embed, item selection/add/remove/edit, confirm embed까지 실제 서버 기준으로 다시 동작 검증 중이다.
+- `discord-api` receipt UI는 이제 기본적으로 기존 공개 메인 메시지를 수정하는 방향으로 정리됐다. select/add/remove/edit는 private 패널을 통해 상태를 바꾸고, 공개 메시지는 세션별 직렬화 + 1초 디바운스로 갱신한다.
+- `discord-api`에는 현재 receipt session 단위 in-memory 락(`ReceiptSessionLockManager`), 공개 메인 메시지 1초 디바운스(`ReceiptMainMessageDebounceService`), 메인 메시지 객체 캐시, 렌더링 계산 캐시가 들어가 있다.
+- `discord-api`의 private selection panel은 사용자+모드 기준으로 하나만 유지되며, confirm 시 열린 private panel 정리를 시도한다.
+- `discord-api` 기준 권한 모델은 현재 `Select item`은 참여자 누구나 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더(owner)만 가능하다.
+- `receipt-parser` -> `discord-api` HTTP callback 경로는 계속 HTTP 기반이고, `/test`는 parser callback 이후 UI를 재현하는 shortcut 경로다. 핵심 세션 생성/갱신 로직은 둘 다 `ReceiptDraftSessionService`를 공유한다.
+- `receipt-parser`는 실제 Azure Blob URL 패턴 기준으로 `uploadedByUserId`를 다시 추출하도록 수정됐다. 따라서 blob URL 패턴을 다시 바꾸면 parser의 추출 규칙과 `discord-api` 계약을 함께 확인해야 한다.
+- `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.

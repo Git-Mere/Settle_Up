@@ -76,6 +76,11 @@ If the service structure changes significantly, update:
 - related workflow/Docker settings if shared project references or build contexts change
 
 ## Current Service Notes
-- receipt selection UI는 현재 public embed 기반으로 동작하며 `/test`가 parser callback 이후 상태를 재현하는 주 테스트 경로다.
-- add/remove/edit/confirm 로직은 `ReceiptInteractionService`가 처리하고, 공개 메인 메시지 발행은 `ReceiptMainMessageService`, draft session 생성/갱신은 `ReceiptDraftSessionService`가 담당한다.
-- 현재 환경에서는 기존 공개 메시지를 REST로 다시 찾아 수정/삭제하는 경로가 `50001 Missing Access`로 실패할 수 있으니, Discord channel lookup 실패를 전제로 코드를 읽어야 한다.
+- receipt selection UI는 현재 public embed + private panel 조합으로 동작하며 `/test`가 parser callback 이후 상태를 재현하는 빠른 테스트 경로다.
+- add/remove/edit/confirm 로직은 `ReceiptInteractionService`가 처리하고, 공개 메인 메시지 수정/발행은 `ReceiptMainMessageService`, draft session 생성/갱신은 `ReceiptDraftSessionService`가 담당한다.
+- routine interaction(select/add/remove/edit)은 공개 메인 메시지를 즉시 갱신하지 않고 1초 디바운스 후 갱신한다. confirm은 즉시 confirmed 메시지로 갱신한다.
+- receipt session mutation은 현재 `ReceiptSessionLockManager`로 직렬화된다. 다음 세션에서 동시성/성능 이슈를 볼 때는 이 락 경로를 먼저 확인한다.
+- 공개 메인 메시지는 세션 내 `MainMessage` 캐시를 사용하고, embed 렌더링은 render context 캐시를 사용한다.
+- private selection panel은 사용자+모드 기준으로 하나만 유지하며, confirm 시 열린 panel cleanup을 시도한다.
+- 권한 모델은 현재 `Select item`만 참여자 누구나 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더만 가능하다.
+- Discord API 일시 오류(`429/502/503/504`)는 `ReceiptMainMessageService`의 retry 경로로 흡수한다. UI 지연/실패를 볼 때는 권한 이슈와 transient error를 구분해서 확인한다.

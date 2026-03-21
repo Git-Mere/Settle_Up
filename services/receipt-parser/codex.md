@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션에서 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가"를 진행했다.
+이번 세션에서 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정" 상태다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -33,25 +33,31 @@
 - retry는 최대 3회까지 수행하며, retryable 대상은 네트워크 오류/timeout/5xx/408/429다.
 - 400/401/403/404 등 non-transient 4xx는 재시도하지 않는다.
 
-5. 로컬 테스트 보조 엔드포인트
+5. `uploadedByUserId` 추출 수정
+- 실제 Azure Blob URL 패턴은 `receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`이며, parser는 이제 이 경로에서 `userId`를 올바르게 추출한다.
+- 이전에는 `<container>/receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`를 기대하는 오프셋 버그가 있어 `uploadedByUserId`가 null이 될 수 있었다.
+- backward-compatible fallback도 남겨 두었다.
+- `discord-api`는 현재 `uploadedByUserId`를 owner 권한 모델과 draft session 생성에 사용하므로, 이 필드는 callback 계약상 실질적인 필수 필드다.
+
+6. 로컬 테스트 보조 엔드포인트
 - `ReceiptParser__EnableLocalUploadTestEndpoint=true`일 때
   `POST /api/tests/local-upload-parse`를 활성화한다.
 - 테스트 엔드포인트도 운영 경로와 동일하게 파싱 후 Cosmos 저장 및 discord-api HTTP 전송 시도를 수행한다.
 - 테스트 엔드포인트 응답도 discord-api로 보내는 outbound payload 스키마를 반환한다.
 - 요청 완료 로그는 `ILogger` 기반 structured log로 남긴다.
 
-6. Cosmos 인증 전략 정리
+7. Cosmos 인증 전략 정리
 - 로컬 테스트 편의를 위해 connection string과 Azure IAM(RBAC) 둘 다 지원한다.
 - `ReceiptParser__CosmosConnectionString`이 있으면 이를 우선 사용한다.
 - 없으면 `ReceiptParser__CosmosAccountEndpoint` + `DefaultAzureCredential`로 연결한다.
 
-7. Observability / logging 정리
+8. Observability / logging 정리
 - `shared/SettleUp.Observability`를 참조하도록 변경.
 - console은 `ILogger` 기반 structured log 중심으로 정리하고 OpenTelemetry raw console dump는 제거했다.
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 Azure Monitor exporter를 활성화한다.
 - 이벤트 수신, 파싱 시작/완료/실패, Cosmos upsert 시작/완료/실패, discord-api send 시작/성공/재시도/최종 실패를 의미 있는 application log로 남긴다.
 
-8. 리팩토링
+9. 리팩토링
 - `ReceiptProcessingService`에서 문서/outbound payload 생성 로직을 분리:
   - `BuildReceiptDocument(...)`
 -  - `BuildDiscordDraftNotificationPayload(...)`
@@ -181,17 +187,20 @@ Cosmos 인증:
 
 3. Downstream contract 확정
 - HTTP callback payload 스키마를 `discord-api` 소비 요구사항과 맞춰 더 엄격히 검증할 필요가 있다.
+- 현재 `uploadedByUserId`는 사실상 필수 계약 필드다. callback 계약을 바꿀 때는 parser와 discord-api 양쪽 validation을 함께 수정해야 한다.
 
 4. Currency 추론 로직
 - `CurrencyCode`가 없을 때 `$` 기준으로 `USD`를 추론한다.
 - 다국적 통화 처리 정책은 추가 정의가 필요하다.
 
 ## Next Codex Session Quick Start
-1. discord-api callback 인증/검증 규칙 추가
-2. 전송 실패 문서 재처리 경로 설계
-3. discord-api 후속 Discord 메시지 생성과 callback 소비 연결
-4. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
-5. 변경 후 검증:
+1. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 안정적으로 들어가는지 재검증
+2. discord-api callback 인증/검증 규칙 추가
+3. 전송 실패 문서 재처리 경로 설계
+4. discord-api 후속 Discord 메시지 생성과 callback 소비 연결
+5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
+6. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다
+7. 변경 후 검증:
 - `dotnet build services/receipt-parser/receipt-parser.csproj -c Release`
 
 ## Last Verified State
@@ -202,4 +211,5 @@ Cosmos 인증:
 - Cosmos 저장은 현재 컨테이너 계약(`/Id` partition key)에 맞춰 동작 확인
 - 빌드 검증: `dotnet build services/receipt-parser/receipt-parser.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
+- 실제 Azure 테스트에서 `uploadedByUserId` null로 callback이 실패하던 이슈를 확인했고, Blob path 추출 로직을 수정했다
 - next planned change: add retry-safe reprocessing/authentication around discord-api callback delivery

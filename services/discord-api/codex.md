@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + receipt interaction 리팩토링" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -50,7 +50,20 @@
 - add/remove/edit 시 금액 header 재계산 반영.
 - add item으로 만든 manual item도 edit 가능하도록 modal custom id는 짧은 token 매핑을 사용한다.
 
-8. `/settle-up` 상호작용 플로우 변경
+8. 공개 메인 메시지 수정 전략 전환
+- 기존 "새 공개 메시지 계속 발행" 중심 흐름에서, 현재는 기존 공개 메인 메시지를 수정하는 방향으로 정리했다.
+- `select/add/remove/edit/confirm`는 모두 최종적으로 기존 메인 메시지를 갱신하는 방향을 기본으로 본다.
+- `select/remove/edit` private panel은 사용자+모드 기준으로 하나만 유지되며, confirm 시 열린 panel cleanup을 시도한다.
+- 권한 모델은 `Select item`만 참여자 전체가 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더만 가능하다.
+
+9. 성능 / 동시성 최적화
+- `ReceiptSessionLockManager`를 추가해 같은 receipt session의 mutation을 직렬화한다.
+- `ReceiptMainMessageDebounceService`를 추가해 routine interaction의 공개 메인 메시지 갱신을 1초 디바운스로 묶는다.
+- `ReceiptSessionState.MainMessage`에 현재 공개 메인 메시지 객체를 캐시해 불필요한 `GetMessageAsync`를 줄인다.
+- `ReceiptMessageRenderer`에 render context 캐시를 넣어 user-item mapping, unassigned item, settlement line, display name 계산을 한 번만 수행한다.
+- Discord API의 `429/502/503/504`에 대해 메인 메시지 갱신 retry를 추가했다.
+
+10. `/settle-up` 상호작용 플로우 변경
 - 기존: slash 후 채널 메시지 업로드 대기
 - 현재: slash -> 버튼 표시 -> 버튼 클릭 -> 모달(파일 업로드 컴포넌트) -> Blob 업로드
 
@@ -82,7 +95,8 @@ services/discord-api/
 ## Runtime Flow (current)
 ### HTTP receiver
 - Kestrel이 기본적으로 `0.0.0.0:5000`에서 리슨한다.
-- `POST /getting_draft`로 parser callback payload를 받으면 핵심 필드만 structured log로 남기고 성공 응답을 반환한다.
+- `POST /getting_draft`로 parser callback payload를 받으면 validation 후 `ReceiptDraftSessionService`로 넘긴다.
+- `uploadedByUserId`가 없으면 현재는 validation 단계에서 실패시켜 500 대신 입력 오류로 드러나게 했다.
 
 ### `/test`
 1. slash 실행
@@ -132,7 +146,8 @@ services/discord-api/
 
 ## Current Constraints / Next Step
 - `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 기본 callback endpoint 골격은 추가됐다.
-- 다음 작업은 공개 체크 메시지 정리 전략과 Discord 권한 제약(`50001 Missing Access`)을 함께 정리하는 것이다.
+- `docs/decisions/012-serialize-receipt-session-updates-and-debounce-public-message-publishing`와 `013-use-session-scoped-in-memory-cache-for-discord-receipt-ui`는 현재 동시성/성능 최적화의 기준 문서다.
+- 다음 작업은 실제 Azure/Discord 환경에서 receipt UI 안정성 확인, stale private panel cleanup 검증, callback 인증/검증 강화다.
 - shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
 
 ## Known Decisions / Open Items
@@ -149,16 +164,18 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 ## Next Codex Session Quick Start
-1. 이전 `Settlement Check` 공개 메시지 정리 전략 확정
-2. Discord 채널 재조회 실패(`50001 Missing Access`) 원인 또는 우회 방식 정리
-3. `/settle-up` 실경로와 `/test` UI 동작 차이 재검증
-4. 인증/검증 규칙 추가
+1. 실제 Azure/Discord 환경에서 1초 디바운스 + 세션 직렬화 동작 재검증
+2. `confirm` 시 private panel cleanup이 토큰 만료 없이 안정적으로 되는지 확인
+3. `/settle-up` 실경로와 `/test` shortcut 경로 차이 재검증
+4. `/getting_draft` 인증/검증 규칙 추가
 5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
-6. 변경 후 검증:
+6. 필요 시 `docs/decisions/012`와 `013`을 먼저 확인하고 문서 업데이트는 `docs/decisions/README.md` 포맷을 따른다
+7. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
 ## Last Verified State
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
-- `/test` 기준 add/remove/edit/confirm 기본 흐름 확인
+- `/test` 기준 select/add/remove/edit/confirm 흐름과 private panel lifecycle 정리 확인
+- 공개 메인 메시지 수정 경로, 세션 직렬화, 1초 디바운스, 메시지 캐시, render context 캐시, retry 적용 상태
 - add item 후 edit 시 발생하던 `Modal CustomId <= 100` 오류는 짧은 edit token 매핑으로 수정

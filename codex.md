@@ -58,8 +58,8 @@ Example:
 
 ## Immediate Priorities
 1. keep Docker and GitHub Actions build contexts aligned with shared projects
-2. wire the received draft payload in `discord-api` into the next Discord follow-up flow
-3. harden `receipt-parser` -> `discord-api` HTTP delivery with validation/reprocessing as needed
+2. harden `receipt-parser` -> `discord-api` HTTP delivery with validation/reprocessing as needed
+3. keep the receipt UI stable under real Discord interaction load
 4. keep observability/logging pattern consistent for future services
 5. future Azure deployment readiness
 
@@ -73,7 +73,15 @@ Accepted cross-service current state:
 - `receipt-parser` now sends parsed results to `discord-api` over HTTP instead of downstream Event Grid
 
 ## Next Session Notes
-- `discord-api` receipt UI는 현재 `/test` 기준으로 체크 섹션 embed, 아이템 선택, add/remove/edit, confirm 메시지 흐름이 대부분 동작한다.
-- 최근 수정으로 add item으로 생성된 manual item도 edit 가능하도록, 긴 `itemId`를 modal custom id에 직접 넣지 않고 세션 내 짧은 edit token 매핑으로 처리한다.
-- 아직 남아 있는 대표 이슈는 "이전 Settlement Check 공개 메시지 정리"다. 현재 Discord channel re-lookup이 `50001 Missing Access`로 막히는 환경이 있어서, 메시지 수정/삭제 전략을 바꿀 때 이 제약을 전제로 봐야 한다.
-- 다음 세션에서 receipt UI를 만질 경우 우선 확인할 파일은 `services/discord-api/src/Services/ReceiptInteractionService.cs`, `services/discord-api/src/Services/ReceiptMainMessageService.cs`, `services/discord-api/src/Models/ReceiptSessionState.cs`다.
+- `discord-api` receipt UI는 현재 공개 메인 메시지 수정 기반으로 정리됐다. routine interaction(select/add/remove/edit)은 1초 디바운스 후 공개 메시지 갱신, confirm은 즉시 갱신이다.
+- 이번 세션에서 세션별 직렬화, 공개 메인 메시지 캐시, render context 캐시, Discord API retry가 들어갔다. 다음 세션에서 UI 이슈를 볼 때는 성능/동시성 관련 코드를 먼저 확인하면 된다.
+- `/test`는 parser callback 이후 UI를 재현하는 shortcut이고, 실제 parser callback은 `/getting_draft`를 통해 같은 `ReceiptDraftSessionService` 경로를 탄다. 단 `/getting_draft`는 payload validation을 더 많이 수행한다.
+- `receipt-parser`는 실제 Azure Blob URL 패턴(`receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`) 기준으로 `uploadedByUserId`를 추출하도록 고쳐졌다.
+- `discord-api` 권한 모델은 현재 `Select item`만 참여자 전체에게 열려 있고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더만 가능하다.
+- 다음 세션에서 문서성 결정이 필요하면 `docs/decisions/README.md` 포맷을 따르고, 관련 기존 결정으로 `012`, `013`을 먼저 확인한다.
+- 다음 세션에서 우선 확인할 파일:
+  - `services/discord-api/src/Services/ReceiptInteractionService.cs`
+  - `services/discord-api/src/Services/ReceiptMainMessageService.cs`
+  - `services/discord-api/src/Services/ReceiptMainMessageDebounceService.cs`
+  - `services/discord-api/src/Services/ReceiptSessionLockManager.cs`
+  - `services/receipt-parser/Services/ReceiptProcessingService.cs`
