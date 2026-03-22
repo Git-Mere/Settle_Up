@@ -62,6 +62,14 @@ public sealed class ReceiptInteractionService
             return await HandleConfirmAsync(component, confirmReceiptId);
         }
 
+        if (ReceiptInteractionCustomIds.TryGetReceiptId(
+                component.Data.CustomId,
+                ReceiptInteractionCustomIds.CancelButtonPrefix,
+                out var cancelReceiptId))
+        {
+            return await HandleCancelAsync(component, cancelReceiptId);
+        }
+
         if (ReceiptInteractionCustomIds.TryParsePageButton(component.Data.CustomId, out var pageReceiptId, out var mode, out var page))
         {
             return await HandleOpenSelectionAsync(component, pageReceiptId, mode, page, updateExistingMessage: true);
@@ -380,10 +388,6 @@ public sealed class ReceiptInteractionService
             ReceiptSessionStateService.AddManualItem(session, itemName.Trim(), itemPrice, quantity);
             _sessionStore.AddOrUpdate(session);
             _debounceService.ScheduleRefresh(receiptId);
-            await modal.ModifyOriginalResponseAsync(properties =>
-            {
-                properties.Content = "아이템을 추가했습니다.";
-            });
 
             return "item_added";
         });
@@ -475,12 +479,43 @@ public sealed class ReceiptInteractionService
             _sessionStore.AddOrUpdate(session);
             await _mainMessageService.RefreshAsync(session);
             await ClosePrivatePanelsAsync(session);
-            await component.ModifyOriginalResponseAsync(properties =>
-            {
-                properties.Content = "정산을 확정했습니다. 공개 체크 메시지를 확인해 주세요.";
-            });
 
             return "confirmed";
+        });
+    }
+
+    private async Task<string> HandleCancelAsync(SocketMessageComponent component, string receiptId)
+    {
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
+
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("세션 종료는 정산자만 할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
+
+            await component.DeferAsync(ephemeral: true);
+            _debounceService.CancelRefresh(receiptId);
+            await ClosePrivatePanelsAsync(session);
+
+            try
+            {
+                await _mainMessageService.DeleteAsync(session);
+            }
+            catch
+            {
+                // Ignore delete failures for already removed or stale main messages.
+            }
+
+            _sessionStore.Remove(receiptId, out _);
+
+            return "cancelled";
         });
     }
 

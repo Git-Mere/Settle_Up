@@ -7,6 +7,7 @@ public static class ReceiptInteractionCustomIds
     public const string RemoveItemButtonPrefix = "receipt-remove-item";
     public const string EditItemButtonPrefix = "receipt-edit-item";
     public const string ConfirmButtonPrefix = "receipt-confirm";
+    public const string CancelButtonPrefix = "receipt-cancel";
     public const string PageButtonPrefix = "receipt-page";
     public const string AssignSelectMenuPrefix = "receipt-item-menu";
     public const string RemoveSelectMenuPrefix = "receipt-remove-menu";
@@ -34,6 +35,11 @@ public static class ReceiptInteractionCustomIds
                 $"{ConfirmButtonPrefix}:{session.ReceiptId}",
                 ButtonStyle.Success,
                 disabled: !ReceiptSessionStateService.CanConfirm(session),
+                row: 1)
+            .WithButton(
+                "Cancel",
+                $"{CancelButtonPrefix}:{session.ReceiptId}",
+                ButtonStyle.Danger,
                 row: 1)
             .Build();
     }

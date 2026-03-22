@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -66,6 +66,15 @@
 10. `/settle-up` 상호작용 플로우 변경
 - 기존: slash 후 채널 메시지 업로드 대기
 - 현재: slash -> 버튼 표시 -> 버튼 클릭 -> 모달(파일 업로드 컴포넌트) -> Blob 업로드
+
+11. check / confirm UX 정리
+- check 공개 메시지의 item 표시는 더 이상 이름 알파벳순으로 재정렬하지 않고, parser draft에서 들어온 원래 순서를 유지한다.
+- confirmed embed의 `Payment` 필드명은 `Pay to`로 변경했다.
+- confirm 후 추가 텍스트(`정산을 확정했습니다...`)는 더 이상 남기지 않고 confirmed embed만 갱신한다.
+- add item 후 추가 텍스트(`아이템을 추가했습니다.`)도 더 이상 남기지 않고 공개 메인 메시지만 갱신한다.
+- check 단계 메인 메시지에 owner 전용 `Cancel` 버튼을 추가했다.
+- `Cancel`은 공개 메인 메시지 삭제, 열린 private panel cleanup, session store 제거, debounce cancel까지 수행한다.
+- cancel 처리 중 삭제된 공개 메시지를 다시 수정하려다 발생하던 Discord `10008 Unknown Message` 오류는 후속 `ModifyOriginalResponseAsync` 호출 제거로 정리했다.
 
 ## Current File Layout (relevant)
 ```text
@@ -179,3 +188,8 @@ services/discord-api/
 - `/test` 기준 select/add/remove/edit/confirm 흐름과 private panel lifecycle 정리 확인
 - 공개 메인 메시지 수정 경로, 세션 직렬화, 1초 디바운스, 메시지 캐시, render context 캐시, retry 적용 상태
 - add item 후 edit 시 발생하던 `Modal CustomId <= 100` 오류는 짧은 edit token 매핑으로 수정
+- check 공개 메시지 item 순서는 원본 영수증 순서 유지로 변경
+- confirmed embed 필드명은 `Pay to`로 변경
+- confirm / add item 후 별도 텍스트 응답 없이 embed만 남도록 정리
+- owner 전용 `Cancel` 버튼으로 공개 메시지 + 열린 private panel + session cleanup 가능
+- cancel 시 `Discord 10008 Unknown Message` 오류는 재현 후 수정했고 현재 빌드 통과 상태

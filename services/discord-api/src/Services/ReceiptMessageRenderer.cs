@@ -49,7 +49,7 @@ public static class ReceiptMessageRenderer
     private static Embed RenderConfirmedEmbed(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
         var builder = CreateHeaderBuilder(session, "Settlement Confirmed", new Color(46, 204, 113), renderContext.ItemsTotal);
-        builder.AddField("Payment", session.PaymentContact ?? "정산 수단이 입력되지 않았습니다.", inline: false);
+        builder.AddField("Pay to", session.PaymentContact ?? "정산 수단이 입력되지 않았습니다.", inline: false);
 
         var settlementLines = renderContext.SettlementLines;
         builder.AddField(
@@ -91,8 +91,7 @@ public static class ReceiptMessageRenderer
                 entry.Item.GroupKey,
                 entry.Item.GroupDisplayName,
                 string.Join('|', entry.Users),
-                entry.Item.Amount))
-            .OrderBy(group => group.Key.Name, StringComparer.OrdinalIgnoreCase);
+                entry.Item.Amount));
 
         var lines = groups
             .Select(group =>
@@ -133,8 +132,7 @@ public static class ReceiptMessageRenderer
 
             foreach (var itemGroup in userGroup.Items
                          .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount))
-                         .OrderBy(group => group.Key.Name, StringComparer.OrdinalIgnoreCase))
+                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount)))
             {
                 sections.Add($"• {itemGroup.Key.Name} x{itemGroup.Count()} - {FormatMoney(itemGroup.Key.Amount * itemGroup.Count(), session.Currency)}");
             }
@@ -154,7 +152,6 @@ public static class ReceiptMessageRenderer
     {
         var groups = renderContext.UnassignedItems
             .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount))
-            .OrderBy(group => group.Key.Name, StringComparer.OrdinalIgnoreCase)
             .Select(group => $"• {group.Key.Name} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)}")
             .ToArray();
 
@@ -209,11 +206,6 @@ public static class ReceiptMessageRenderer
 
                 if (selectedItems.Count > 0)
                 {
-                    selectedItems.Sort(static (left, right) =>
-                    {
-                        var nameCompare = StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
-                        return nameCompare != 0 ? nameCompare : StringComparer.Ordinal.Compare(left.Id, right.Id);
-                    });
                     itemsByUserId[userSelection.Key] = selectedItems;
                 }
             }
@@ -230,8 +222,6 @@ public static class ReceiptMessageRenderer
 
             var unassignedItems = session.Items
                 .Where(item => !readOnlyUsersByItem.ContainsKey(item.Id))
-                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.Id, StringComparer.Ordinal)
                 .ToArray();
 
             var displayNameCache = new Dictionary<string, string>(StringComparer.Ordinal);

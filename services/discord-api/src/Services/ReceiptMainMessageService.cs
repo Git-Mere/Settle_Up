@@ -89,6 +89,39 @@ public sealed class ReceiptMainMessageService
         _sessionStore.AddOrUpdate(session);
     }
 
+    public async Task DeleteAsync(ReceiptSessionState session, CancellationToken cancellationToken = default)
+    {
+        if (session.MainMessageId is null)
+        {
+            return;
+        }
+
+        var message = session.MainMessage;
+        if (message is null)
+        {
+            if (session.MainChannelId is null)
+            {
+                return;
+            }
+
+            var channel = await ResolveMainChannelAsync(session);
+            message = await ExecuteDiscordRetryAsync(
+                operationName: "resolve_main_message_for_delete",
+                operation: async () => await channel.GetMessageAsync(session.MainMessageId.Value) as IUserMessage,
+                cancellationToken);
+
+            if (message is null)
+            {
+                return;
+            }
+        }
+
+        await ExecuteDiscordRetryAsync(
+            operationName: "delete_main_message",
+            operation: () => message.DeleteAsync(new RequestOptions { CancelToken = cancellationToken }),
+            cancellationToken);
+    }
+
     public async Task PublishForComponentAsync(ReceiptSessionState session, SocketMessageComponent component)
     {
         var replacement = await ExecuteDiscordRetryAsync(

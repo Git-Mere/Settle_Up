@@ -55,4 +55,21 @@ public sealed class ReceiptSessionStore
 
         return _sessions.TryGetValue(receiptId, out session);
     }
+
+    public bool Remove(string receiptId, out ReceiptSessionState? session)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(receiptId);
+
+        if (!_sessions.TryRemove(receiptId, out session))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.BlobUrl))
+        {
+            _receiptIdsByBlobUrl.TryRemove(session.BlobUrl, out _);
+        }
+
+        return true;
+    }
 }
