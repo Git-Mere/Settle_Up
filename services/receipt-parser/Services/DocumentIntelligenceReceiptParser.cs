@@ -12,6 +12,47 @@ namespace receipt_parser.Services;
 
 public sealed class DocumentIntelligenceReceiptParser
 {
+    private static readonly string[] SpiritsKeywords =
+    [
+        "alcohol",
+        "beer",
+        "bourbon",
+        "brandy",
+        "gin",
+        "liquor",
+        "rum",
+        "scotch",
+        "soju",
+        "spirits",
+        "tequila",
+        "vodka",
+        "whiskey",
+        "whisky",
+        "wine"
+    ];
+
+    private static readonly string[] TaxExemptKeywords =
+    [
+        "apple",
+        "banana",
+        "bread",
+        "broccoli",
+        "carrot",
+        "egg",
+        "eggs",
+        "fruit",
+        "grocery",
+        "lettuce",
+        "milk",
+        "orange",
+        "produce",
+        "rice",
+        "spinach",
+        "tomato",
+        "vegetable",
+        "water"
+    ];
+
     private readonly ReceiptParserOptions _options;
     private readonly ILogger<DocumentIntelligenceReceiptParser> _logger;
     private readonly DocumentIntelligenceClient _documentClient;
@@ -100,6 +141,7 @@ public sealed class DocumentIntelligenceReceiptParser
         var total = TryParseDecimal(totalField);
         var transactionDate = TryParseDate(dateField?.Content);
         var items = ExtractItems(analyzedDocument);
+        var taxBreakdown = ExtractTaxBreakdown(analyzedDocument, tax);
         var currency = TryParseCurrencyCode(totalField);
 
         var receiptId = Guid.NewGuid().ToString("N");
@@ -119,6 +161,7 @@ public sealed class DocumentIntelligenceReceiptParser
             Subtotal: subtotal,
             Tax: tax,
             Total: total,
+            TaxBreakdown: taxBreakdown,
             ParseMetadata: new ParseMetadata(
                 ModelId: _options.ModelId,
                 MerchantConfidence: merchantField?.Confidence,
@@ -216,17 +259,185 @@ public sealed class DocumentIntelligenceReceiptParser
             itemField.ValueDictionary.TryGetValue("Quantity", out var quantityField);
             itemField.ValueDictionary.TryGetValue("UnitPrice", out var unitPriceField);
             itemField.ValueDictionary.TryGetValue("TotalPrice", out var totalPriceField);
+            var description = descriptionField?.Content;
 
             var item = new ParsedReceiptItem(
                 Id: $"item{index + 1}",
-                Description: descriptionField?.Content,
+                Description: description,
                 Quantity: TryParseDecimal(quantityField),
                 UnitPrice: TryParseDecimal(unitPriceField),
-                TotalPrice: TryParseDecimal(totalPriceField));
+                TotalPrice: TryParseDecimal(totalPriceField),
+                IsGeneralTaxable: InferIsGeneralTaxable(description),
+                IsSpirits: InferIsSpirits(description),
+                VolumeLiters: TryExtractVolumeLiters(description),
+                DirectSpiritsLiterTax: null);
 
             items.Add(item);
         }
 
         return items;
+    }
+
+    private static ReceiptTaxBreakdown? ExtractTaxBreakdown(AnalyzedDocument? document, decimal? totalTax)
+    {
+        var taxDetailsField = TryGetField(document, "TaxDetails");
+        if (taxDetailsField?.ValueList is null || taxDetailsField.ValueList.Count == 0)
+        {
+            return totalTax is decimal fallbackTotalTax
+                ? new ReceiptTaxBreakdown(fallbackTotalTax, 0m, 0m)
+                : null;
+        }
+
+        var generalSalesTax = 0m;
+        var spiritsSalesTax = 0m;
+        var spiritsLiterTax = 0m;
+        var classifiedAny = false;
+
+        foreach (var taxDetailField in taxDetailsField.ValueList)
+        {
+            if (taxDetailField?.ValueDictionary is null)
+            {
+                continue;
+            }
+
+            taxDetailField.ValueDictionary.TryGetValue("Description", out var descriptionField);
+            taxDetailField.ValueDictionary.TryGetValue("Amount", out var amountField);
+
+            var amount = TryParseDecimal(amountField) ?? 0m;
+            if (amount <= 0m)
+            {
+                continue;
+            }
+
+            var description = descriptionField?.Content ?? string.Empty;
+            switch (ClassifyTaxDetail(description))
+            {
+                case ReceiptTaxType.SpiritsSalesTax:
+                    spiritsSalesTax += amount;
+                    classifiedAny = true;
+                    break;
+                case ReceiptTaxType.SpiritsLiterTax:
+                    spiritsLiterTax += amount;
+                    classifiedAny = true;
+                    break;
+                default:
+                    generalSalesTax += amount;
+                    classifiedAny = true;
+                    break;
+            }
+        }
+
+        if (!classifiedAny)
+        {
+            return totalTax is decimal unresolvedTotalTax
+                ? new ReceiptTaxBreakdown(unresolvedTotalTax, 0m, 0m)
+                : null;
+        }
+
+        if (totalTax is decimal receiptTotalTax)
+        {
+            var classifiedTotal = generalSalesTax + spiritsSalesTax + spiritsLiterTax;
+            var remainder = decimal.Round(receiptTotalTax - classifiedTotal, 2, MidpointRounding.AwayFromZero);
+            if (remainder > 0m)
+            {
+                generalSalesTax += remainder;
+            }
+        }
+
+        return new ReceiptTaxBreakdown(generalSalesTax, spiritsSalesTax, spiritsLiterTax);
+    }
+
+    private static ReceiptTaxType ClassifyTaxDetail(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return ReceiptTaxType.GeneralSalesTax;
+        }
+
+        var normalized = description.Trim().ToLowerInvariant();
+
+        if (normalized.Contains("slt", StringComparison.Ordinal) ||
+            normalized.Contains("spirits liter", StringComparison.Ordinal) ||
+            normalized.Contains("spirit liter", StringComparison.Ordinal) ||
+            normalized.Contains("liter tax", StringComparison.Ordinal) ||
+            normalized.Contains("litre tax", StringComparison.Ordinal))
+        {
+            return ReceiptTaxType.SpiritsLiterTax;
+        }
+
+        if (normalized.Contains("sst", StringComparison.Ordinal) ||
+            normalized.Contains("spirits sales", StringComparison.Ordinal) ||
+            normalized.Contains("spirit sales", StringComparison.Ordinal) ||
+            (normalized.Contains("spirits", StringComparison.Ordinal) && normalized.Contains("tax", StringComparison.Ordinal)))
+        {
+            return ReceiptTaxType.SpiritsSalesTax;
+        }
+
+        return ReceiptTaxType.GeneralSalesTax;
+    }
+
+    private static bool? InferIsSpirits(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return null;
+        }
+
+        return SpiritsKeywords.Any(keyword => description.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool? InferIsGeneralTaxable(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return null;
+        }
+
+        if (InferIsSpirits(description) == true)
+        {
+            return true;
+        }
+
+        if (TaxExemptKeywords.Any(keyword => description.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static decimal? TryExtractVolumeLiters(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            description,
+            @"(?<value>\d+(?:\.\d+)?)\s*(?<unit>ml|mL|ML|l|L|liter|liters|litre|litres|oz)",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        if (!match.Success ||
+            !decimal.TryParse(match.Groups["value"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
+        {
+            return null;
+        }
+
+        var unit = match.Groups["unit"].Value.ToLowerInvariant();
+        return unit switch
+        {
+            "ml" => decimal.Round(value / 1000m, 6, MidpointRounding.AwayFromZero),
+            "l" or "liter" or "liters" or "litre" or "litres" => value,
+            "oz" => decimal.Round(value * 0.0295735m, 6, MidpointRounding.AwayFromZero),
+            _ => null
+        };
+    }
+
+    private enum ReceiptTaxType
+    {
+        GeneralSalesTax,
+        SpiritsSalesTax,
+        SpiritsLiterTax
     }
 }

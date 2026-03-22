@@ -43,8 +43,9 @@ public static class ReceiptSessionStateService
             TransactionDate = payload.TransactionDate,
             Currency = NormalizeOptionalText(payload.Currency),
             Subtotal = payload.Subtotal,
-            Tax = payload.Tax,
-            Total = payload.Total,
+            Tax = payload.Tax ?? SumTaxBreakdown(payload.TaxBreakdown),
+            Total = payload.Total ?? ResolveComputedTotal(payload.Subtotal, payload.Tax, payload.TaxBreakdown),
+            TaxBreakdown = payload.TaxBreakdown,
             Items = ExpandItems(payload.Items).ToList(),
             IsDraftReady = true,
             CreatedAtUtc = now,
@@ -68,8 +69,9 @@ public static class ReceiptSessionStateService
         session.TransactionDate = payload.TransactionDate;
         session.Currency = NormalizeOptionalText(payload.Currency);
         session.Subtotal = payload.Subtotal;
-        session.Tax = payload.Tax;
-        session.Total = payload.Total;
+        session.Tax = payload.Tax ?? SumTaxBreakdown(payload.TaxBreakdown);
+        session.Total = payload.Total ?? ResolveComputedTotal(payload.Subtotal, payload.Tax, payload.TaxBreakdown);
+        session.TaxBreakdown = payload.TaxBreakdown;
         session.Items = ExpandItems(payload.Items).ToList();
         session.IsDraftReady = true;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -103,7 +105,11 @@ public static class ReceiptSessionStateService
                     NormalizedName = normalizedName,
                     Amount = amountPerUnit,
                     GroupKey = groupKey,
-                    GroupDisplayName = name
+                    GroupDisplayName = name,
+                    IsGeneralTaxable = item.IsGeneralTaxable,
+                    IsSpirits = item.IsSpirits,
+                    VolumeLiters = ResolveVolumePerUnit(item, quantity),
+                    DirectSpiritsLiterTax = ResolveDirectSpiritsLiterTaxPerUnit(item, quantity)
                 });
             }
         }
@@ -286,8 +292,6 @@ public static class ReceiptSessionStateService
 
         return session.Items
             .Where(item => selectedIds.Contains(item.Id))
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Id, StringComparer.Ordinal)
             .ToArray();
     }
 
@@ -297,8 +301,6 @@ public static class ReceiptSessionStateService
 
         return session.Items
             .Where(item => GetUsersForItem(session, item.Id).Count == 0)
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Id, StringComparer.Ordinal)
             .ToArray();
     }
 
@@ -322,27 +324,7 @@ public static class ReceiptSessionStateService
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var balances = new Dictionary<string, decimal>(StringComparer.Ordinal);
-
-        foreach (var item in session.Items)
-        {
-            var assignedUsers = GetUsersForItem(session, item.Id);
-            if (assignedUsers.Count == 0)
-            {
-                continue;
-            }
-
-            var share = decimal.Round(item.Amount / assignedUsers.Count, 2, MidpointRounding.AwayFromZero);
-            foreach (var userId in assignedUsers)
-            {
-                if (!balances.TryGetValue(userId, out var current))
-                {
-                    current = 0;
-                }
-
-                balances[userId] = current + share;
-            }
-        }
+        var balances = ReceiptTaxAllocationService.Calculate(session).ParticipantTotals;
 
         return balances
             .Where(entry => entry.Value > 0)
@@ -358,13 +340,15 @@ public static class ReceiptSessionStateService
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        var taxResult = ReceiptTaxAllocationService.Calculate(session);
+
         return session.Items
             .Where(item =>
             {
                 var users = GetUsersForItem(session, item.Id);
                 return users.Count == 1 && string.Equals(users[0], userId, StringComparison.Ordinal);
             })
-            .Sum(item => item.Amount);
+            .Sum(item => taxResult.ItemAllocations.GetValueOrDefault(item.Id)?.ItemTotal ?? item.Amount);
     }
 
     public static string ResolveUserDisplayName(ReceiptSessionState session, string userId)
@@ -472,5 +456,49 @@ public static class ReceiptSessionStateService
         var itemsTotal = session.Items.Sum(item => item.Amount);
         session.Subtotal = itemsTotal;
         session.Total = itemsTotal + (session.Tax ?? 0m);
+    }
+
+    private static decimal? ResolveVolumePerUnit(ReceiptDraftNotificationItem item, int quantity)
+    {
+        if (item.VolumeLiters is null)
+        {
+            return null;
+        }
+
+        return quantity <= 1
+            ? item.VolumeLiters
+            : decimal.Round(item.VolumeLiters.Value / quantity, 6, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal? ResolveDirectSpiritsLiterTaxPerUnit(ReceiptDraftNotificationItem item, int quantity)
+    {
+        if (item.DirectSpiritsLiterTax is null)
+        {
+            return null;
+        }
+
+        return quantity <= 1
+            ? item.DirectSpiritsLiterTax
+            : decimal.Round(item.DirectSpiritsLiterTax.Value / quantity, 6, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal? SumTaxBreakdown(ReceiptDraftTaxBreakdown? taxBreakdown)
+    {
+        if (taxBreakdown is null)
+        {
+            return null;
+        }
+
+        return (taxBreakdown.GeneralSalesTax ?? 0m) +
+               (taxBreakdown.SpiritsSalesTax ?? 0m) +
+               (taxBreakdown.SpiritsLiterTax ?? 0m);
+    }
+
+    private static decimal? ResolveComputedTotal(decimal? subtotal, decimal? tax, ReceiptDraftTaxBreakdown? taxBreakdown)
+    {
+        var resolvedTax = tax ?? SumTaxBreakdown(taxBreakdown);
+        return subtotal is decimal subtotalValue && resolvedTax is decimal taxValue
+            ? subtotalValue + taxValue
+            : null;
     }
 }

@@ -9,10 +9,15 @@
   "subtotal": 8.00,
   "tax": 0.64,
   "total": 8.64,
+  "taxBreakdown": {
+    "generalSalesTax": 0.40,
+    "spiritsSalesTax": 0.24,
+    "spiritsLiterTax": 0.00
+  },
   "items": [
-    { "id": "item-01", "description": "Pizza Slice", "quantity": 1, "unitPrice": 3.00, "totalPrice": 3.00 },
-    { "id": "item-02", "description": "Coke", "quantity": 1, "unitPrice": 2.00, "totalPrice": 2.00 },
-    { "id": "item-03", "description": "Beer", "quantity": 1, "unitPrice": 3.00, "totalPrice": 3.00 }
+    { "id": "item-01", "description": "Pizza Slice", "quantity": 1, "unitPrice": 3.00, "totalPrice": 3.00, "isGeneralTaxable": true, "isSpirits": false },
+    { "id": "item-02", "description": "Coke", "quantity": 1, "unitPrice": 2.00, "totalPrice": 2.00, "isGeneralTaxable": true, "isSpirits": false },
+    { "id": "item-03", "description": "Whiskey", "quantity": 1, "unitPrice": 3.00, "totalPrice": 3.00, "isGeneralTaxable": true, "isSpirits": true, "volumeLiters": 0.75 }
   ],
   "parseMetadata": {
     "modelId": "prebuilt-receipt",

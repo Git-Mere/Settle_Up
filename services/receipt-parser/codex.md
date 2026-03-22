@@ -65,6 +65,16 @@
 - `EventGridWebhookEndpoint`에서 payload 파싱을 `TryParseEventsAsync(...)`로 분리해 가독성 개선.
 - 원문 OCR 결과(`rawResultJson`) 저장을 제거해 Cosmos 저장 문서를 정규화 필드만 포함하도록 정리했다.
 
+10. tax policy contract extension
+- parser -> discord-api draft payload는 이제 optional tax breakdown(`generalSalesTax`, `spiritsSalesTax`, `spiritsLiterTax`)를 포함할 수 있다.
+- item contract도 optional metadata(`isGeneralTaxable`, `isSpirits`, `volumeLiters`, `directSpiritsLiterTax`)를 받을 수 있게 확장했다.
+- `TaxDetails` field가 있으면 description 기준으로 general/SST/SLT를 분류해 tax breakdown을 구성한다.
+- item description에서는 keyword 기반으로 spirits 여부, 일부 obvious grocery tax-exempt 여부, volumeLiters(`750ml`, `1L`, `12oz` 등)를 추정한다.
+- 현재 parser가 item-level direct SLT를 정확히 식별하는 규칙까지는 없어서 `directSpiritsLiterTax` 기본값은 null이다.
+- 현재 기본 fallback은 기존 receipt-level `tax`를 `generalSalesTax`로 간주하는 형태다.
+- tax detail 분류 후 receipt-level `TotalTax`와 차이가 남으면 remainder는 general sales tax에 보정한다.
+- 이후 parser가 alcohol/spirts metadata를 더 정확히 추출하면 같은 contract로 downstream settlement 정밀도를 올릴 수 있다.
+
 ## Current File Layout (relevant)
 ```text
 services/receipt-parser/

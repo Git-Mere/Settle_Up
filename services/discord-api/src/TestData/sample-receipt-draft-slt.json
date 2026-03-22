@@ -1,0 +1,29 @@
+{
+  "draftId": "test-receipt-ui-slt",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/test-receipt-ui-slt.png",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Bottle Shop",
+  "transactionDate": "2026-03-22",
+  "currency": "USD",
+  "subtotal": 34.00,
+  "tax": 4.10,
+  "total": 38.10,
+  "taxBreakdown": {
+    "generalSalesTax": 1.10,
+    "spiritsSalesTax": 1.50,
+    "spiritsLiterTax": 1.50
+  },
+  "items": [
+    { "id": "item-01", "description": "Whiskey 750ml", "quantity": 1, "unitPrice": 16.00, "totalPrice": 16.00, "isGeneralTaxable": true, "isSpirits": true, "volumeLiters": 0.75 },
+    { "id": "item-02", "description": "Vodka 1L", "quantity": 1, "unitPrice": 12.00, "totalPrice": 12.00, "isGeneralTaxable": true, "isSpirits": true, "volumeLiters": 1.0 },
+    { "id": "item-03", "description": "Chips", "quantity": 1, "unitPrice": 6.00, "totalPrice": 6.00, "isGeneralTaxable": true, "isSpirits": false }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.98,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-03-22T20:00:00Z",
+  "updatedAtUtc": "2026-03-22T20:00:00Z"
+}

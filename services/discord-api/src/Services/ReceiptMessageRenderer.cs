@@ -91,7 +91,7 @@ public static class ReceiptMessageRenderer
                 entry.Item.GroupKey,
                 entry.Item.GroupDisplayName,
                 string.Join('|', entry.Users),
-                entry.Item.Amount));
+                renderContext.ItemAllocations.GetValueOrDefault(entry.Item.Id)?.ItemTotal ?? entry.Item.Amount));
 
         var lines = groups
             .Select(group =>
@@ -127,12 +127,15 @@ public static class ReceiptMessageRenderer
         {
             var individualTotal = userGroup.Items
                 .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                .Sum(item => item.Amount);
+                .Sum(item => renderContext.ItemAllocations.GetValueOrDefault(item.Id)?.ItemTotal ?? item.Amount);
             sections.Add($"{userGroup.DisplayName} - {FormatMoney(individualTotal, session.Currency)}");
 
             foreach (var itemGroup in userGroup.Items
                          .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount)))
+                         .GroupBy(item => new ItemGroupingKey(
+                             item.GroupKey,
+                             item.GroupDisplayName,
+                             renderContext.ItemAllocations.GetValueOrDefault(item.Id)?.ItemTotal ?? item.Amount)))
             {
                 sections.Add($"• {itemGroup.Key.Name} x{itemGroup.Count()} - {FormatMoney(itemGroup.Key.Amount * itemGroup.Count(), session.Currency)}");
             }
@@ -151,7 +154,10 @@ public static class ReceiptMessageRenderer
     private static string BuildUnassignedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
         var groups = renderContext.UnassignedItems
-            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount))
+            .GroupBy(item => new ItemGroupingKey(
+                item.GroupKey,
+                item.GroupDisplayName,
+                renderContext.ItemAllocations.GetValueOrDefault(item.Id)?.ItemTotal ?? item.Amount))
             .Select(group => $"• {group.Key.Name} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)}")
             .ToArray();
 
@@ -174,6 +180,7 @@ public static class ReceiptMessageRenderer
         public required Dictionary<string, IReadOnlyList<string>> UsersByItemId { get; init; }
         public required Dictionary<string, IReadOnlyList<ReceiptLineItemState>> ItemsByUserId { get; init; }
         public required IReadOnlyList<ReceiptLineItemState> UnassignedItems { get; init; }
+        public required IReadOnlyDictionary<string, ReceiptItemTaxAllocation> ItemAllocations { get; init; }
         public required IReadOnlyList<ReceiptSettlementLine> SettlementLines { get; init; }
         public required decimal ItemsTotal { get; init; }
         public required Func<string, string> ResolveUserDisplayName { get; init; }
@@ -182,6 +189,7 @@ public static class ReceiptMessageRenderer
         {
             var usersByItemId = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             var itemsByUserId = new Dictionary<string, List<ReceiptLineItemState>>(StringComparer.Ordinal);
+            var taxResult = ReceiptTaxAllocationService.Calculate(session);
 
             foreach (var userSelection in session.UserSelections)
             {
@@ -237,22 +245,7 @@ public static class ReceiptMessageRenderer
                 return resolved;
             }
 
-            var balances = new Dictionary<string, decimal>(StringComparer.Ordinal);
-            foreach (var item in session.Items)
-            {
-                if (!readOnlyUsersByItem.TryGetValue(item.Id, out var assignedUsers) || assignedUsers.Count == 0)
-                {
-                    continue;
-                }
-
-                var share = decimal.Round(item.Amount / assignedUsers.Count, 2, MidpointRounding.AwayFromZero);
-                foreach (var userId in assignedUsers)
-                {
-                    balances[userId] = balances.TryGetValue(userId, out var current) ? current + share : share;
-                }
-            }
-
-            var settlementLines = balances
+            var settlementLines = taxResult.ParticipantTotals
                 .Where(entry => entry.Value > 0)
                 .Select(entry => new ReceiptSettlementLine(
                     entry.Key,
@@ -266,6 +259,7 @@ public static class ReceiptMessageRenderer
                 UsersByItemId = readOnlyUsersByItem,
                 ItemsByUserId = readOnlyItemsByUser,
                 UnassignedItems = unassignedItems,
+                ItemAllocations = taxResult.ItemAllocations,
                 SettlementLines = settlementLines,
                 ItemsTotal = session.Items.Sum(item => item.Amount),
                 ResolveUserDisplayName = ResolveDisplayName

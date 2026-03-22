@@ -17,6 +17,7 @@ public sealed class ReceiptDocument
     public decimal? Subtotal { get; init; }
     public decimal? Tax { get; init; }
     public decimal? Total { get; init; }
+    public ReceiptTaxBreakdown? TaxBreakdown { get; init; }
     public List<ParsedReceiptItem> Items { get; init; } = [];
     public ParseMetadata ParseMetadata { get; init; } = new("prebuilt-receipt", null, null);
     public string NotificationStatus { get; init; } = NotificationStatuses.Pending;

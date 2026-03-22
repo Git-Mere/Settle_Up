@@ -9,5 +9,6 @@ public sealed record ParsedReceiptResult(
     decimal? Subtotal,
     decimal? Tax,
     decimal? Total,
+    ReceiptTaxBreakdown? TaxBreakdown,
     ParseMetadata ParseMetadata,
     IReadOnlyList<ParsedReceiptItem> Items);

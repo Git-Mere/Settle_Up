@@ -11,6 +11,7 @@ public sealed record DiscordDraftNotificationPayload(
     decimal? Subtotal,
     decimal? Tax,
     decimal? Total,
+    ReceiptTaxBreakdown? TaxBreakdown,
     IReadOnlyList<ParsedReceiptItem> Items,
     ParseMetadata ParseMetadata,
     DateTimeOffset CreatedAtUtc,

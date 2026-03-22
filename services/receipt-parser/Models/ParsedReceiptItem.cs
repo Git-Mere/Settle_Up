@@ -5,4 +5,8 @@ public sealed record ParsedReceiptItem(
     string? Description,
     decimal? Quantity,
     decimal? UnitPrice,
-    decimal? TotalPrice);
+    decimal? TotalPrice,
+    bool? IsGeneralTaxable = null,
+    bool? IsSpirits = null,
+    decimal? VolumeLiters = null,
+    decimal? DirectSpiritsLiterTax = null);

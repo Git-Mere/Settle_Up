@@ -76,6 +76,16 @@
 - `Cancel`은 공개 메인 메시지 삭제, 열린 private panel cleanup, session store 제거, debounce cancel까지 수행한다.
 - cancel 처리 중 삭제된 공개 메시지를 다시 수정하려다 발생하던 Discord `10008 Unknown Message` 오류는 후속 `ModifyOriginalResponseAsync` 호출 제거로 정리했다.
 
+12. tax allocation policy support
+- `discord-api`는 이제 receipt-level tax breakdown(`generalSalesTax`, `spiritsSalesTax`, `spiritsLiterTax`)와 item-level tax metadata(`isGeneralTaxable`, `isSpirits`, `volumeLiters`, `directSpiritsLiterTax`)를 optional로 받을 수 있다.
+- settlement 계산은 `ReceiptTaxAllocationService`에서 수행한다.
+- general sales tax는 general-taxable item group 안에서 price 비례로 배분한다.
+- SST는 spirits item group 안에서 price 비례로만 배분한다.
+- SLT는 direct item-level SLT 우선, 그 다음 volume 비례, 마지막 fallback으로 spirits price 비례 배분을 사용한다.
+- tax metadata가 없는 기존 payload도 계속 동작하며, 이 경우 현재 `tax`는 일반 sales tax fallback으로 취급된다.
+- participant settlement는 item-level tax를 item total에 먼저 붙인 뒤, 그 total을 item 참가자에게 equal split한다.
+- `/test` 검증용 sample 외에 tax-exempt / SLT scenario sample JSON도 추가해 뒀다.
+
 ## Current File Layout (relevant)
 ```text
 services/discord-api/
@@ -109,7 +119,7 @@ services/discord-api/
 
 ### `/test`
 1. slash 실행
-2. 샘플 draft JSON 로드
+2. scenario option(`general`, `liquor`, `tax-exempt`)에 맞는 샘플 draft JSON 로드
 3. 실행 사용자 id로 payload 덮어쓰기
 4. 기존 receipt session/UI 생성 경로 재사용
 5. 현재 채널에 테스트 UI 전송
@@ -201,3 +211,5 @@ services/discord-api/
 - confirm / add item 후 별도 텍스트 응답 없이 embed만 남도록 정리
 - owner 전용 `Cancel` 버튼으로 공개 메시지 + 열린 private panel + session cleanup 가능
 - cancel 시 `Discord 10008 Unknown Message` 오류는 재현 후 수정했고 현재 빌드 통과 상태
+- tax breakdown / item tax metadata optional contract 추가
+- settlement line과 check section amount는 item-level allocated tax를 반영한 total 기준으로 계산
