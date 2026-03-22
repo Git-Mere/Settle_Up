@@ -172,6 +172,14 @@ services/discord-api/
 3. `.env.example` 추적
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
+4. UI language switching
+- 제출/대외 사용성을 고려해 slash command 이름은 영어로 유지하는 방향이 적절하다.
+- 후보 명령은 `/language english|korean|auto` 형태다.
+- 권장 정책은 공개 메시지(public embed/button text)는 영어 고정, private panel/ephemeral 안내문은 사용자별 언어 설정을 적용하는 방식이다.
+- 이 방식이면 한국/미국 사용자가 같은 채널에 있어도 공개 상태는 모두가 읽기 쉽고, 개인 상호작용은 각자 편한 언어로 볼 수 있다.
+- 초기 구현은 in-memory user preference로 시작할 수 있지만, 재시작 후에도 유지하려면 이후 persistent storage가 필요하다.
+- 이번 세션에서는 구현하지 않았고, UI 문구 정리 후속 작업으로 미뤄 둔다.
+
 ## Next Codex Session Quick Start
 1. 실제 Azure/Discord 환경에서 1초 디바운스 + 세션 직렬화 동작 재검증
 2. `confirm` 시 private panel cleanup이 토큰 만료 없이 안정적으로 되는지 확인
