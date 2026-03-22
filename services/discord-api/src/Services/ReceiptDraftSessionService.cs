@@ -94,6 +94,14 @@ public sealed class ReceiptDraftSessionService
         {
             var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl)
                 ?? ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
+            var shouldReplacePendingMessage =
+                !string.IsNullOrWhiteSpace(previousReceiptId) &&
+                !string.Equals(previousReceiptId, receiptId, StringComparison.Ordinal) &&
+                session.MainChannelId is not null &&
+                session.MainMessageId is not null;
+            var previousMainMessage = shouldReplacePendingMessage
+                ? CreateMainMessageSnapshot(session)
+                : null;
 
             ReceiptSessionStateService.ApplyDraftPayload(session, payload, displayName);
             session.UserDisplayNames[uploadedByUserId] = displayName;
@@ -101,7 +109,27 @@ public sealed class ReceiptDraftSessionService
             session.MainChannel ??= targetChannel;
             session.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
-            if (session.MainChannelId is not null && session.MainMessageId is not null)
+            if (shouldReplacePendingMessage)
+            {
+                var publishChannel = session.MainChannel ?? targetChannel
+                    ?? throw new InvalidOperationException("pending 메시지를 교체하려면 대상 채널이 필요합니다.");
+
+                _debounceService.CancelRefresh(previousReceiptId!);
+                await _mainMessageService.SendToChannelAsync(session, publishChannel, cancellationToken);
+
+                if (previousMainMessage is not null)
+                {
+                    try
+                    {
+                        await _mainMessageService.DeleteAsync(previousMainMessage, cancellationToken);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup failures for already removed or stale pending messages.
+                    }
+                }
+            }
+            else if (session.MainChannelId is not null && session.MainMessageId is not null)
             {
                 _debounceService.CancelRefresh(session.ReceiptId);
                 await _mainMessageService.RefreshAsync(session);
@@ -180,5 +208,20 @@ public sealed class ReceiptDraftSessionService
     {
         var existingSession = FindExistingSession(payload, receiptId, out _, out _);
         return existingSession?.ReceiptId ?? receiptId;
+    }
+
+    private static ReceiptSessionState CreateMainMessageSnapshot(ReceiptSessionState session)
+    {
+        return new ReceiptSessionState
+        {
+            ReceiptId = session.ReceiptId,
+            BlobUrl = session.BlobUrl,
+            MainChannel = session.MainChannel,
+            MainMessage = session.MainMessage,
+            MainMessageId = session.MainMessageId,
+            MainChannelId = session.MainChannelId,
+            CreatedAtUtc = session.CreatedAtUtc,
+            UpdatedAtUtc = session.UpdatedAtUtc
+        };
     }
 }

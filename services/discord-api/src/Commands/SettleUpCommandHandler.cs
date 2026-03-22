@@ -181,10 +181,6 @@ sealed class SettleUpCommandHandler
                 CancellationToken.None);
         }
 
-        await modal.FollowupAsync(
-            $"업로드를 완료했습니다. 같은 채널에 체크 메시지를 만들었고, 파싱 완료 후 자동으로 갱신합니다.\n입력한 정산 수단 정보는 장기 저장하지 않습니다.\nURL: {uploadResult.BlobUri}",
-            ephemeral: true);
-
         return "success";
     }
 
