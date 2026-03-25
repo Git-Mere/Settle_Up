@@ -25,14 +25,6 @@ sealed class TestReceiptCommandHandler
         return new SlashCommandBuilder()
             .WithName(CommandName)
             .WithDescription("테스트 영수증 UI를 생성합니다.")
-            .AddOption(new SlashCommandOptionBuilder()
-                .WithName("scenario")
-                .WithDescription("Test scenario")
-                .WithRequired(false)
-                .WithType(ApplicationCommandOptionType.String)
-                .AddChoice("general", ReceiptDraftTestDataLoader.DefaultScenario)
-                .AddChoice("liquor", ReceiptDraftTestDataLoader.LiquorScenario)
-                .AddChoice("tax-exempt", ReceiptDraftTestDataLoader.TaxExemptScenario))
             .Build();
     }
 
@@ -42,25 +34,13 @@ sealed class TestReceiptCommandHandler
 
         try
         {
-            var scenario = command.Data.Options
-                .FirstOrDefault(option => string.Equals(option.Name, "scenario", StringComparison.Ordinal))
-                ?.Value?.ToString();
-
-            var normalizedScenario = ReceiptDraftTestDataLoader.NormalizeScenario(scenario);
-            var payload = await _testDataLoader.LoadAsync(
-                command.User.Id.ToString(),
-                command.User.GlobalName ?? command.User.Username,
-                normalizedScenario);
+            var payload = await _testDataLoader.LoadAsync(command.User.Id.ToString(), command.User.GlobalName ?? command.User.Username);
             await _receiptDraftSessionService.CreateOrUpdateSessionFromDraftAsync(
                 payload,
                 command,
                 CancellationToken.None);
 
-            _logger.LogInformation(
-                "Test receipt session created. UserId={UserId} DraftId={DraftId} Scenario={Scenario}",
-                command.User.Id,
-                payload.ResolvedDraftId,
-                normalizedScenario);
+            _logger.LogInformation("Test receipt session created. UserId={UserId} DraftId={DraftId}", command.User.Id, payload.ResolvedDraftId);
             return "success";
         }
         catch (Exception ex)

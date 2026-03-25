@@ -175,11 +175,6 @@ public sealed class ReceiptProcessingService
         string? uploadedByUserIdOverride = null)
     {
         var now = DateTimeOffset.UtcNow;
-        var totalTax = parsed.Tax ?? SumTaxBreakdown(parsed.TaxBreakdown);
-        var subtotal = parsed.Subtotal;
-        var total = parsed.Total ?? (subtotal is decimal subtotalValue && totalTax is decimal totalTaxValue
-            ? subtotalValue + totalTaxValue
-            : null);
         return new ReceiptDocument
         {
             Id = parsed.ReceiptId,
@@ -189,10 +184,9 @@ public sealed class ReceiptProcessingService
             MerchantName = parsed.MerchantName,
             Currency = parsed.Currency,
             TransactionDate = parsed.TransactionDate,
-            Subtotal = subtotal,
-            Tax = totalTax,
-            Total = total,
-            TaxBreakdown = parsed.TaxBreakdown,
+            Subtotal = parsed.Subtotal,
+            Tax = parsed.Tax,
+            Total = parsed.Total,
             Items = parsed.Items.ToList(),
             ParseMetadata = parsed.ParseMetadata,
             NotificationStatus = NotificationStatuses.Pending,
@@ -215,7 +209,6 @@ public sealed class ReceiptProcessingService
             Subtotal: document.Subtotal,
             Tax: document.Tax,
             Total: document.Total,
-            TaxBreakdown: document.TaxBreakdown,
             Items: document.Items,
             ParseMetadata: document.ParseMetadata,
             CreatedAtUtc: document.CreatedAtUtc,
@@ -237,7 +230,6 @@ public sealed class ReceiptProcessingService
             Subtotal = document.Subtotal,
             Tax = document.Tax,
             Total = document.Total,
-            TaxBreakdown = document.TaxBreakdown,
             Items = document.Items,
             ParseMetadata = document.ParseMetadata,
             NotificationStatus = NotificationStatuses.Sent,
@@ -268,7 +260,6 @@ public sealed class ReceiptProcessingService
             Subtotal = document.Subtotal,
             Tax = document.Tax,
             Total = document.Total,
-            TaxBreakdown = document.TaxBreakdown,
             Items = document.Items,
             ParseMetadata = document.ParseMetadata,
             NotificationStatus = NotificationStatuses.Pending,
@@ -286,18 +277,6 @@ public sealed class ReceiptProcessingService
         return ex is DiscordApiDraftDeliveryException deliveryException
             ? deliveryException.AttemptCount
             : 0;
-    }
-
-    private static decimal? SumTaxBreakdown(ReceiptTaxBreakdown? taxBreakdown)
-    {
-        if (taxBreakdown is null)
-        {
-            return null;
-        }
-
-        return (taxBreakdown.GeneralSalesTax ?? 0m) +
-               (taxBreakdown.SpiritsSalesTax ?? 0m) +
-               (taxBreakdown.SpiritsLiterTax ?? 0m);
     }
 
     private static string TruncateErrorMessage(string errorMessage)

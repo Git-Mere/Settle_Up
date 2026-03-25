@@ -17,7 +17,6 @@ public sealed class ReceiptDraftNotificationRequest
     public decimal? Subtotal { get; init; }
     public decimal? Tax { get; init; }
     public decimal? Total { get; init; }
-    public ReceiptDraftTaxBreakdown? TaxBreakdown { get; init; }
     public IReadOnlyList<ReceiptDraftNotificationItem>? Items { get; init; }
     public ReceiptDraftParseMetadata? ParseMetadata { get; init; }
     public DateTimeOffset CreatedAtUtc { get; init; }
@@ -32,16 +31,7 @@ public sealed record ReceiptDraftNotificationItem(
     string? Description,
     decimal? Quantity,
     decimal? UnitPrice,
-    decimal? TotalPrice,
-    bool? IsGeneralTaxable = null,
-    bool? IsSpirits = null,
-    decimal? VolumeLiters = null,
-    decimal? DirectSpiritsLiterTax = null);
-
-public sealed record ReceiptDraftTaxBreakdown(
-    decimal? GeneralSalesTax,
-    decimal? SpiritsSalesTax,
-    decimal? SpiritsLiterTax);
+    decimal? TotalPrice);
 
 public sealed record ReceiptDraftParseMetadata(
     string ModelId,

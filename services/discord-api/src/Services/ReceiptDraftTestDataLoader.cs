@@ -2,10 +2,6 @@ using System.Text.Json;
 
 public sealed class ReceiptDraftTestDataLoader
 {
-    public const string DefaultScenario = "general";
-    public const string LiquorScenario = "liquor";
-    public const string TaxExemptScenario = "tax-exempt";
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -18,12 +14,9 @@ public sealed class ReceiptDraftTestDataLoader
         _environment = environment;
     }
 
-    public async Task<ReceiptDraftNotificationRequest> LoadAsync(
-        string uploadedByUserId,
-        string? uploadedByDisplayName,
-        string? scenario = null)
+    public async Task<ReceiptDraftNotificationRequest> LoadAsync(string uploadedByUserId, string? uploadedByDisplayName)
     {
-        var filePath = Path.Combine(_environment.ContentRootPath, "TestData", ResolveFileName(scenario));
+        var filePath = Path.Combine(_environment.ContentRootPath, "TestData", "sample-receipt-draft.json");
         await using var stream = File.OpenRead(filePath);
 
         var payload = await JsonSerializer.DeserializeAsync<ReceiptDraftNotificationRequest>(stream, JsonOptions);
@@ -52,38 +45,10 @@ public sealed class ReceiptDraftTestDataLoader
             Subtotal = payload.Subtotal,
             Tax = payload.Tax,
             Total = payload.Total,
-            TaxBreakdown = payload.TaxBreakdown,
             Items = payload.Items,
             ParseMetadata = payload.ParseMetadata,
             CreatedAtUtc = payload.CreatedAtUtc,
             UpdatedAtUtc = payload.UpdatedAtUtc
-        };
-    }
-
-    private static string ResolveFileName(string? scenario)
-    {
-        return NormalizeScenario(scenario) switch
-        {
-            LiquorScenario => "sample-receipt-draft-slt.json",
-            TaxExemptScenario => "sample-receipt-draft-tax-exempt.json",
-            _ => "sample-receipt-draft.json"
-        };
-    }
-
-    public static string NormalizeScenario(string? scenario)
-    {
-        if (string.IsNullOrWhiteSpace(scenario))
-        {
-            return DefaultScenario;
-        }
-
-        return scenario.Trim().ToLowerInvariant() switch
-        {
-            "general" => DefaultScenario,
-            "liquor" => LiquorScenario,
-            "tax-exempt" => TaxExemptScenario,
-            "taxexempt" => TaxExemptScenario,
-            _ => DefaultScenario
         };
     }
 }

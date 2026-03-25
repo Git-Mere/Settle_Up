@@ -13,7 +13,6 @@ public sealed class ReceiptSessionState
     public decimal? Subtotal { get; set; }
     public decimal? Tax { get; set; }
     public decimal? Total { get; set; }
-    public ReceiptDraftTaxBreakdown? TaxBreakdown { get; set; }
     public List<ReceiptLineItemState> Items { get; set; } = [];
     public Dictionary<string, HashSet<string>> UserSelections { get; init; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> UserDisplayNames { get; init; } = new(StringComparer.Ordinal);
