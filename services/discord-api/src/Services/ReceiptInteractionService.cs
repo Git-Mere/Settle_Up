@@ -3,21 +3,33 @@ using Discord.WebSocket;
 
 public sealed class ReceiptInteractionService
 {
+    private static readonly TimeSpan[] HistorySaveRetryDelays =
+    [
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromMilliseconds(1500)
+    ];
+
     private readonly ReceiptSessionStore _sessionStore;
     private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ReceiptMainMessageDebounceService _debounceService;
+    private readonly SettlementHistoryRepositoryProvider _settlementHistoryRepositoryProvider;
+    private readonly ILogger<ReceiptInteractionService> _logger;
 
     public ReceiptInteractionService(
         ReceiptSessionStore sessionStore,
         ReceiptSessionLockManager lockManager,
         ReceiptMainMessageService mainMessageService,
-        ReceiptMainMessageDebounceService debounceService)
+        ReceiptMainMessageDebounceService debounceService,
+        SettlementHistoryRepositoryProvider settlementHistoryRepositoryProvider,
+        ILogger<ReceiptInteractionService> logger)
     {
         _sessionStore = sessionStore;
         _lockManager = lockManager;
         _mainMessageService = mainMessageService;
         _debounceService = debounceService;
+        _settlementHistoryRepositoryProvider = settlementHistoryRepositoryProvider;
+        _logger = logger;
     }
 
     public async Task<string?> HandleButtonAsync(SocketMessageComponent component)
@@ -550,8 +562,69 @@ public sealed class ReceiptInteractionService
             await _mainMessageService.RefreshAsync(session);
             await ClosePrivatePanelsAsync(session);
 
+            if (_settlementHistoryRepositoryProvider.Repository is not null)
+            {
+                var historyDocument = ConfirmedSettlementHistoryDocument.FromSession(session);
+                _ = SaveHistoryInBackgroundAsync(component, historyDocument);
+            }
+
             return "confirmed";
         });
+    }
+
+    private async Task SaveHistoryInBackgroundAsync(
+        SocketMessageComponent component,
+        ConfirmedSettlementHistoryDocument historyDocument)
+    {
+        var repository = _settlementHistoryRepositoryProvider.Repository;
+        if (repository is null)
+        {
+            return;
+        }
+
+        Exception? lastException = null;
+        for (var attempt = 1; attempt <= HistorySaveRetryDelays.Length + 1; attempt++)
+        {
+            try
+            {
+                await repository.SaveAsync(historyDocument);
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger.LogWarning(
+                    ex,
+                    "Settlement history save failed. ReceiptId={ReceiptId} Attempt={Attempt}",
+                    historyDocument.ReceiptId,
+                    attempt);
+
+                if (attempt > HistorySaveRetryDelays.Length)
+                {
+                    break;
+                }
+
+                await Task.Delay(HistorySaveRetryDelays[attempt - 1]);
+            }
+        }
+
+        _logger.LogError(
+            lastException,
+            "Settlement history save exhausted retries. ReceiptId={ReceiptId} HistoryId={HistoryId}",
+            historyDocument.ReceiptId,
+            historyDocument.Id);
+
+        try
+        {
+            await component.FollowupAsync("history등록에 실패했습니다.", ephemeral: true);
+        }
+        catch (Exception followupEx)
+        {
+            _logger.LogWarning(
+                followupEx,
+                "Failed to send settlement history failure followup. ReceiptId={ReceiptId}",
+                historyDocument.ReceiptId);
+        }
     }
 
     private async Task<string> HandleCancelAsync(SocketMessageComponent component, string receiptId)

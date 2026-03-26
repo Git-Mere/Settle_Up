@@ -26,6 +26,7 @@ public sealed class ReceiptSessionState
     public IUserMessage? MainMessage { get; set; }
     public ulong? MainMessageId { get; set; }
     public ulong? MainChannelId { get; set; }
+    public ulong? MainGuildId { get; set; }
     public bool IsDraftReady { get; set; }
     public bool IsConfirmed { get; set; }
     public DateTimeOffset? ConfirmedAtUtc { get; set; }

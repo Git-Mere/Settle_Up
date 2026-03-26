@@ -220,6 +220,7 @@ public sealed class ReceiptDraftSessionService
             MainMessage = session.MainMessage,
             MainMessageId = session.MainMessageId,
             MainChannelId = session.MainChannelId,
+            MainGuildId = session.MainGuildId,
             CreatedAtUtc = session.CreatedAtUtc,
             UpdatedAtUtc = session.UpdatedAtUtc
         };

@@ -189,11 +189,15 @@ public sealed class ReceiptMainMessageService
         IMessageChannel? fallbackChannel)
     {
         var resolvedChannel = message.Channel as IMessageChannel ?? fallbackChannel ?? session.MainChannel;
+        var guildId = resolvedChannel is IGuildChannel guildChannel
+            ? guildChannel.GuildId
+            : session.MainGuildId;
 
         session.MainMessageId = message.Id;
         session.MainChannel = resolvedChannel;
         session.MainMessage = message;
         session.MainChannelId = resolvedChannel?.Id ?? session.MainChannelId;
+        session.MainGuildId = guildId;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
     }
 

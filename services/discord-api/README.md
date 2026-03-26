@@ -44,8 +44,13 @@ Discord API 서비스입니다.
 - `AZURE_BLOB_CONTAINER_NAME` : 업로드할 Blob 컨테이너 이름 (예: `receipts`)
 - `AZURE_BLOB_CONNECTION_STRING` : Blob 연결 문자열 (권장)
 - `AZURE_BLOB_ACCOUNT_URL` : 연결 문자열 대신 사용할 계정 URL (예: `https://<account>.blob.core.windows.net`)
+- `SettlementHistory__CosmosConnectionString` : confirm history 저장용 Cosmos 연결 문자열 (로컬 테스트 권장)
+- `SettlementHistory__CosmosAccountEndpoint` : connection string 대신 사용할 Cosmos endpoint
+- `SettlementHistory__CosmosDatabaseId` : history를 저장할 database 이름
+- `SettlementHistory__CosmosContainerId` : history를 저장할 container 이름 (예: `settlement-history`)
 - `ASPNETCORE_URLS` : HTTP 서버 리슨 주소 (기본값 `http://0.0.0.0:5000`)
 
 주의:
 - `AZURE_BLOB_CONNECTION_STRING` 또는 `AZURE_BLOB_ACCOUNT_URL` 중 하나는 반드시 필요합니다.
 - `AZURE_BLOB_ACCOUNT_URL` 방식을 쓰면 실행 환경에서 `DefaultAzureCredential` 인증이 가능해야 합니다.
+- settlement history 저장은 Cosmos 설정이 있을 때만 활성화됩니다. 설정이 없으면 confirm은 계속 동작하지만 history는 저장되지 않습니다.
