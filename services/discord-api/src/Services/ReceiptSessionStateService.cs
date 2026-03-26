@@ -44,6 +44,9 @@ public static class ReceiptSessionStateService
             Currency = NormalizeOptionalText(payload.Currency),
             Subtotal = payload.Subtotal,
             Tax = payload.Tax,
+            Sst = payload.Sst,
+            Slt = payload.Slt,
+            Tip = payload.Tip,
             Total = payload.Total,
             Items = ExpandItems(payload.Items).ToList(),
             IsDraftReady = true,
@@ -69,6 +72,9 @@ public static class ReceiptSessionStateService
         session.Currency = NormalizeOptionalText(payload.Currency);
         session.Subtotal = payload.Subtotal;
         session.Tax = payload.Tax;
+        session.Sst = payload.Sst;
+        session.Slt = payload.Slt;
+        session.Tip = payload.Tip;
         session.Total = payload.Total;
         session.Items = ExpandItems(payload.Items).ToList();
         session.IsDraftReady = true;
@@ -262,6 +268,28 @@ public static class ReceiptSessionStateService
         return true;
     }
 
+    public static void ReplaceAlcoholFlagsForPage(
+        ReceiptSessionState session,
+        IReadOnlyCollection<string> pageItemIds,
+        IReadOnlyCollection<string> selectedAlcoholItemIds)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var validPageItemIds = pageItemIds
+            .Where(itemId => HasItem(session, itemId))
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedIds = selectedAlcoholItemIds
+            .Where(validPageItemIds.Contains)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var item in session.Items.Where(item => validPageItemIds.Contains(item.Id)))
+        {
+            item.IsAlcohol = selectedIds.Contains(item.Id);
+        }
+
+        session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+    }
+
     public static IReadOnlyList<string> GetUsersForItem(ReceiptSessionState session, string itemId)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -305,11 +333,7 @@ public static class ReceiptSessionStateService
     public static bool CanConfirm(ReceiptSessionState session)
     {
         ArgumentNullException.ThrowIfNull(session);
-
-        return session.IsDraftReady &&
-               !session.IsConfirmed &&
-               session.Items.Count > 0 &&
-               GetUnassignedItems(session).Count == 0;
+        return GetConfirmBlockReason(session) is null;
     }
 
     public static decimal GetItemsTotal(ReceiptSessionState session)
@@ -322,29 +346,7 @@ public static class ReceiptSessionStateService
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var balances = new Dictionary<string, decimal>(StringComparer.Ordinal);
-
-        foreach (var item in session.Items)
-        {
-            var assignedUsers = GetUsersForItem(session, item.Id);
-            if (assignedUsers.Count == 0)
-            {
-                continue;
-            }
-
-            var share = decimal.Round(item.Amount / assignedUsers.Count, 2, MidpointRounding.AwayFromZero);
-            foreach (var userId in assignedUsers)
-            {
-                if (!balances.TryGetValue(userId, out var current))
-                {
-                    current = 0;
-                }
-
-                balances[userId] = current + share;
-            }
-        }
-
-        return balances
+        return ReceiptAllocationService.Calculate(session).SettlementTotals
             .Where(entry => entry.Value > 0)
             .Select(entry => new ReceiptSettlementLine(
                 entry.Key,
@@ -357,14 +359,52 @@ public static class ReceiptSessionStateService
     public static decimal GetIndividualTotalForUser(ReceiptSessionState session, string userId)
     {
         ArgumentNullException.ThrowIfNull(session);
+        var allocation = ReceiptAllocationService.Calculate(session);
+        return allocation.ParticipantBreakdowns.GetValueOrDefault(userId)?.Subtotal ?? 0m;
+    }
 
-        return session.Items
-            .Where(item =>
-            {
-                var users = GetUsersForItem(session, item.Id);
-                return users.Count == 1 && string.Equals(users[0], userId, StringComparison.Ordinal);
-            })
-            .Sum(item => item.Amount);
+    public static bool HasAlcoholItems(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return session.Items.Any(item => item.IsAlcohol);
+    }
+
+    public static bool RequiresAlcoholSelection(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return (session.Sst ?? 0m) > 0m || (session.Slt ?? 0m) > 0m;
+    }
+
+    public static string? GetConfirmBlockReason(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (!session.IsDraftReady)
+        {
+            return "영수증 분석이 아직 끝나지 않았습니다.";
+        }
+
+        if (session.IsConfirmed)
+        {
+            return "이미 confirm된 영수증입니다.";
+        }
+
+        if (session.Items.Count == 0)
+        {
+            return "아이템이 없어 confirm할 수 없습니다.";
+        }
+
+        if (GetUnassignedItems(session).Count > 0)
+        {
+            return "Unassigned 아이템이 모두 배정되어야 confirm할 수 있습니다.";
+        }
+
+        if (RequiresAlcoholSelection(session) && !HasAlcoholItems(session))
+        {
+            return "SST/SLT가 있는 영수증은 alcohol 아이템을 먼저 지정해야 합니다.";
+        }
+
+        return null;
     }
 
     public static string ResolveUserDisplayName(ReceiptSessionState session, string userId)
@@ -471,6 +511,6 @@ public static class ReceiptSessionStateService
     {
         var itemsTotal = session.Items.Sum(item => item.Amount);
         session.Subtotal = itemsTotal;
-        session.Total = itemsTotal + (session.Tax ?? 0m);
+        session.Total = itemsTotal + (session.Tax ?? 0m) + (session.Sst ?? 0m) + (session.Slt ?? 0m) + (session.Tip ?? 0m);
     }
 }

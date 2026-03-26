@@ -56,6 +56,30 @@ public sealed class ReceiptInteractionService
 
         if (ReceiptInteractionCustomIds.TryGetReceiptId(
                 component.Data.CustomId,
+                ReceiptInteractionCustomIds.MarkAlcoholButtonPrefix,
+                out var alcoholReceiptId))
+        {
+            return await HandleOpenSelectionAsync(component, alcoholReceiptId, ReceiptSelectionMode.Alcohol, page: 0);
+        }
+
+        if (ReceiptInteractionCustomIds.TryGetReceiptId(
+                component.Data.CustomId,
+                ReceiptInteractionCustomIds.TipModeProportionalButtonPrefix,
+                out var tipProportionalReceiptId))
+        {
+            return await HandleTipModeChangeAsync(component, tipProportionalReceiptId, TipSplitMode.Proportional);
+        }
+
+        if (ReceiptInteractionCustomIds.TryGetReceiptId(
+                component.Data.CustomId,
+                ReceiptInteractionCustomIds.TipModeEqualButtonPrefix,
+                out var tipEqualReceiptId))
+        {
+            return await HandleTipModeChangeAsync(component, tipEqualReceiptId, TipSplitMode.Equal);
+        }
+
+        if (ReceiptInteractionCustomIds.TryGetReceiptId(
+                component.Data.CustomId,
                 ReceiptInteractionCustomIds.ConfirmButtonPrefix,
                 out var confirmReceiptId))
         {
@@ -107,6 +131,15 @@ public sealed class ReceiptInteractionService
             return await HandleEditSelectionAsync(component, receiptId, page);
         }
 
+        if (ReceiptInteractionCustomIds.TryParseSelectMenu(
+                component.Data.CustomId,
+                ReceiptInteractionCustomIds.AlcoholSelectMenuPrefix,
+                out receiptId,
+                out page))
+        {
+            return await HandleAlcoholSelectionAsync(component, receiptId, page);
+        }
+
         return null;
     }
 
@@ -149,7 +182,7 @@ public sealed class ReceiptInteractionService
                 return "draft_not_ready";
             }
 
-            if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit) &&
+            if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit || mode == ReceiptSelectionMode.Alcohol) &&
                 !IsOwner(session, component.User.Id))
             {
                 await RespondOrUpdateAsync(component, updateExistingMessage, "정산자만 이 기능을 사용할 수 있습니다.", null);
@@ -181,6 +214,7 @@ public sealed class ReceiptInteractionService
                 ReceiptSelectionMode.Assign => "selection_menu_opened",
                 ReceiptSelectionMode.Remove => "remove_menu_opened",
                 ReceiptSelectionMode.Edit => "edit_menu_opened",
+                ReceiptSelectionMode.Alcohol => "alcohol_menu_opened",
                 _ => "menu_opened"
             };
         });
@@ -298,6 +332,41 @@ public sealed class ReceiptInteractionService
 
             await component.RespondWithModalAsync(modal.Build());
             return "edit_modal_opened";
+        });
+    }
+
+    private async Task<string> HandleAlcoholSelectionAsync(SocketMessageComponent component, string receiptId, int page)
+    {
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
+
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("정산자만 alcohol 아이템을 지정할 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
+
+            var pageItems = ReceiptSessionStateService.GetPageItems(session, page);
+            ReceiptSessionStateService.ReplaceAlcoholFlagsForPage(
+                session,
+                pageItems.Select(item => item.Id).ToArray(),
+                component.Data.Values);
+
+            _sessionStore.AddOrUpdate(session);
+
+            await component.UpdateAsync(properties =>
+            {
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Alcohol, session, page);
+                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Alcohol, page);
+            });
+
+            _debounceService.ScheduleRefresh(receiptId);
+            return "alcohol_selection_updated";
         });
     }
 
@@ -465,9 +534,10 @@ public sealed class ReceiptInteractionService
                 return "forbidden_user";
             }
 
-            if (!ReceiptSessionStateService.CanConfirm(session))
+            var confirmBlockReason = ReceiptSessionStateService.GetConfirmBlockReason(session);
+            if (confirmBlockReason is not null)
             {
-                await component.RespondAsync("Unassigned 아이템이 모두 배정되어야 confirm할 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(confirmBlockReason, ephemeral: true);
                 return "confirm_blocked";
             }
 
@@ -519,6 +589,38 @@ public sealed class ReceiptInteractionService
         });
     }
 
+    private async Task<string> HandleTipModeChangeAsync(SocketMessageComponent component, string receiptId, TipSplitMode tipSplitMode)
+    {
+        return await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                return "session_not_found";
+            }
+
+            if (!IsOwner(session, component.User.Id))
+            {
+                await component.RespondAsync("정산자만 tip 분배 방식을 바꿀 수 있습니다.", ephemeral: true);
+                return "forbidden_user";
+            }
+
+            if ((session.Tip ?? 0m) <= 0m)
+            {
+                await component.RespondAsync("이 영수증에는 tip이 없습니다.", ephemeral: true);
+                return "tip_not_available";
+            }
+
+            await component.DeferAsync();
+            session.TipSplitMode = tipSplitMode;
+            session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            _sessionStore.AddOrUpdate(session);
+            _debounceService.CancelRefresh(receiptId);
+            await _mainMessageService.RefreshAsync(session);
+            return "tip_mode_updated";
+        });
+    }
+
     private MessageComponent BuildSelectionComponents(
         ReceiptSessionState session,
         string userId,
@@ -534,10 +636,14 @@ public sealed class ReceiptInteractionService
             var selectMenu = new SelectMenuBuilder()
                 .WithCustomId(ReceiptInteractionCustomIds.BuildSelectMenuCustomId(mode, session.ReceiptId, safePage))
                 .WithPlaceholder(GetSelectPlaceholder(mode))
-                .WithMinValues(mode == ReceiptSelectionMode.Assign ? 0 : 1)
-                .WithMaxValues(mode == ReceiptSelectionMode.Assign ? Math.Max(1, pageItems.Count) : 1);
+                .WithMinValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? 0 : 1)
+                .WithMaxValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? Math.Max(1, pageItems.Count) : 1);
 
             var selectedIds = ReceiptSessionStateService.GetItemsForUser(session, userId)
+                .Select(item => item.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            var selectedAlcoholIds = session.Items
+                .Where(item => item.IsAlcohol)
                 .Select(item => item.Id)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -545,10 +651,15 @@ public sealed class ReceiptInteractionService
             {
                 var instanceIndex = GetInstanceIndex(session, item);
                 selectMenu.AddOption(
-                    label: $"{item.Name} #{instanceIndex}",
+                    label: $"{item.Name} #{instanceIndex}{(item.IsAlcohol ? " [Alcohol]" : string.Empty)}",
                     value: item.Id,
                     description: $"{FormatMoney(item.Amount, session.Currency)}",
-                    isDefault: mode == ReceiptSelectionMode.Assign && selectedIds.Contains(item.Id));
+                    isDefault: mode switch
+                    {
+                        ReceiptSelectionMode.Assign => selectedIds.Contains(item.Id),
+                        ReceiptSelectionMode.Alcohol => selectedAlcoholIds.Contains(item.Id),
+                        _ => false
+                    });
             }
 
             builder.WithSelectMenu(selectMenu, row: 0);
@@ -654,6 +765,7 @@ public sealed class ReceiptInteractionService
             ReceiptSelectionMode.Assign => $"아이템을 선택해서 정산에 참가하세요. (Page {safePage + 1}/{totalPages})",
             ReceiptSelectionMode.Remove => $"제거할 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
             ReceiptSelectionMode.Edit => $"수정할 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
+            ReceiptSelectionMode.Alcohol => $"alcohol 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
             _ => $"아이템을 선택하세요. (Page {safePage + 1}/{totalPages})"
         };
     }
@@ -665,6 +777,7 @@ public sealed class ReceiptInteractionService
             ReceiptSelectionMode.Assign => "아이템 선택",
             ReceiptSelectionMode.Remove => "제거할 아이템 선택",
             ReceiptSelectionMode.Edit => "수정할 아이템 선택",
+            ReceiptSelectionMode.Alcohol => "alcohol 아이템 선택",
             _ => "아이템 선택"
         };
     }

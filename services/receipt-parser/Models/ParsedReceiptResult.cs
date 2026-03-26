@@ -8,6 +8,9 @@ public sealed record ParsedReceiptResult(
     DateOnly? TransactionDate,
     decimal? Subtotal,
     decimal? Tax,
+    decimal? Sst,
+    decimal? Slt,
+    decimal? Tip,
     decimal? Total,
     ParseMetadata ParseMetadata,
     IReadOnlyList<ParsedReceiptItem> Items);

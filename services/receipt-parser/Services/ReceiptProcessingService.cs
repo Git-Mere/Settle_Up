@@ -175,6 +175,11 @@ public sealed class ReceiptProcessingService
         string? uploadedByUserIdOverride = null)
     {
         var now = DateTimeOffset.UtcNow;
+        var totalTax = (parsed.Tax ?? 0m) + (parsed.Sst ?? 0m) + (parsed.Slt ?? 0m);
+        var total = parsed.Total ?? (parsed.Subtotal is decimal subtotal
+            ? subtotal + totalTax + (parsed.Tip ?? 0m)
+            : null);
+
         return new ReceiptDocument
         {
             Id = parsed.ReceiptId,
@@ -186,7 +191,10 @@ public sealed class ReceiptProcessingService
             TransactionDate = parsed.TransactionDate,
             Subtotal = parsed.Subtotal,
             Tax = parsed.Tax,
-            Total = parsed.Total,
+            Sst = parsed.Sst,
+            Slt = parsed.Slt,
+            Tip = parsed.Tip,
+            Total = total,
             Items = parsed.Items.ToList(),
             ParseMetadata = parsed.ParseMetadata,
             NotificationStatus = NotificationStatuses.Pending,
@@ -208,6 +216,9 @@ public sealed class ReceiptProcessingService
             Currency: document.Currency,
             Subtotal: document.Subtotal,
             Tax: document.Tax,
+            Sst: document.Sst,
+            Slt: document.Slt,
+            Tip: document.Tip,
             Total: document.Total,
             Items: document.Items,
             ParseMetadata: document.ParseMetadata,
@@ -229,6 +240,9 @@ public sealed class ReceiptProcessingService
             Currency = document.Currency,
             Subtotal = document.Subtotal,
             Tax = document.Tax,
+            Sst = document.Sst,
+            Slt = document.Slt,
+            Tip = document.Tip,
             Total = document.Total,
             Items = document.Items,
             ParseMetadata = document.ParseMetadata,
@@ -259,6 +273,9 @@ public sealed class ReceiptProcessingService
             Currency = document.Currency,
             Subtotal = document.Subtotal,
             Tax = document.Tax,
+            Sst = document.Sst,
+            Slt = document.Slt,
+            Tip = document.Tip,
             Total = document.Total,
             Items = document.Items,
             ParseMetadata = document.ParseMetadata,

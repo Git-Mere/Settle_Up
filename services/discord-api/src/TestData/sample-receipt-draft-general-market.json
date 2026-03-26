@@ -1,0 +1,25 @@
+{
+  "draftId": "test-receipt-ui-001",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/test-receipt-ui-001.png",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Neighborhood Market",
+  "transactionDate": "2026-03-12",
+  "currency": "USD",
+  "subtotal": 18.00,
+  "tax": 1.44,
+  "total": 19.44,
+  "items": [
+    { "id": "item-01", "description": "Milk", "quantity": 1, "unitPrice": 4.50, "totalPrice": 4.50 },
+    { "id": "item-02", "description": "Bread", "quantity": 1, "unitPrice": 3.50, "totalPrice": 3.50 },
+    { "id": "item-03", "description": "Eggs", "quantity": 1, "unitPrice": 5.00, "totalPrice": 5.00 },
+    { "id": "item-04", "description": "Chips", "quantity": 1, "unitPrice": 5.00, "totalPrice": 5.00 }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.98,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-03-12T20:00:00Z",
+  "updatedAtUtc": "2026-03-12T20:00:00Z"
+}

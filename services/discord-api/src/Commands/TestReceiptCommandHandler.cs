@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 sealed class TestReceiptCommandHandler
 {
     public const string CommandName = "test";
+    private const string ScenarioOptionName = "scenario";
 
     private readonly ReceiptDraftTestDataLoader _testDataLoader;
     private readonly ReceiptDraftSessionService _receiptDraftSessionService;
@@ -25,6 +26,14 @@ sealed class TestReceiptCommandHandler
         return new SlashCommandBuilder()
             .WithName(CommandName)
             .WithDescription("테스트 영수증 UI를 생성합니다.")
+            .AddOption(new SlashCommandOptionBuilder()
+                .WithName(ScenarioOptionName)
+                .WithDescription("테스트할 영수증 시나리오를 선택합니다.")
+                .WithRequired(true)
+                .WithType(ApplicationCommandOptionType.String)
+                .AddChoice("General Market", ReceiptDraftTestScenario.GeneralMarket)
+                .AddChoice("Liquor Tax Market", ReceiptDraftTestScenario.LiquorTaxMarket)
+                .AddChoice("Restaurant Tip", ReceiptDraftTestScenario.RestaurantTip))
             .Build();
     }
 
@@ -34,13 +43,24 @@ sealed class TestReceiptCommandHandler
 
         try
         {
-            var payload = await _testDataLoader.LoadAsync(command.User.Id.ToString(), command.User.GlobalName ?? command.User.Username);
+            var scenario = command.Data.Options
+                .FirstOrDefault(option => string.Equals(option.Name, ScenarioOptionName, StringComparison.Ordinal))
+                ?.Value?.ToString();
+
+            var payload = await _testDataLoader.LoadAsync(
+                command.User.Id.ToString(),
+                command.User.GlobalName ?? command.User.Username,
+                scenario);
             await _receiptDraftSessionService.CreateOrUpdateSessionFromDraftAsync(
                 payload,
                 command,
                 CancellationToken.None);
 
-            _logger.LogInformation("Test receipt session created. UserId={UserId} DraftId={DraftId}", command.User.Id, payload.ResolvedDraftId);
+            _logger.LogInformation(
+                "Test receipt session created. UserId={UserId} DraftId={DraftId} Scenario={Scenario}",
+                command.User.Id,
+                payload.ResolvedDraftId,
+                scenario);
             return "success";
         }
         catch (Exception ex)

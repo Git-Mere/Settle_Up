@@ -12,6 +12,10 @@ public sealed class ReceiptSessionState
     public string? Currency { get; set; }
     public decimal? Subtotal { get; set; }
     public decimal? Tax { get; set; }
+    public decimal? Sst { get; set; }
+    public decimal? Slt { get; set; }
+    public decimal? Tip { get; set; }
+    public TipSplitMode TipSplitMode { get; set; } = TipSplitMode.Proportional;
     public decimal? Total { get; set; }
     public List<ReceiptLineItemState> Items { get; set; } = [];
     public Dictionary<string, HashSet<string>> UserSelections { get; init; } = new(StringComparer.Ordinal);

@@ -14,9 +14,15 @@ public sealed class ReceiptDraftTestDataLoader
         _environment = environment;
     }
 
-    public async Task<ReceiptDraftNotificationRequest> LoadAsync(string uploadedByUserId, string? uploadedByDisplayName)
+    public async Task<ReceiptDraftNotificationRequest> LoadAsync(
+        string uploadedByUserId,
+        string? uploadedByDisplayName,
+        string? scenario = null)
     {
-        var filePath = Path.Combine(_environment.ContentRootPath, "TestData", "sample-receipt-draft.json");
+        var filePath = Path.Combine(
+            _environment.ContentRootPath,
+            "TestData",
+            ResolveScenarioFileName(scenario));
         await using var stream = File.OpenRead(filePath);
 
         var payload = await JsonSerializer.DeserializeAsync<ReceiptDraftNotificationRequest>(stream, JsonOptions);
@@ -44,6 +50,9 @@ public sealed class ReceiptDraftTestDataLoader
             Currency = payload.Currency,
             Subtotal = payload.Subtotal,
             Tax = payload.Tax,
+            Sst = payload.Sst,
+            Slt = payload.Slt,
+            Tip = payload.Tip,
             Total = payload.Total,
             Items = payload.Items,
             ParseMetadata = payload.ParseMetadata,
@@ -51,4 +60,22 @@ public sealed class ReceiptDraftTestDataLoader
             UpdatedAtUtc = payload.UpdatedAtUtc
         };
     }
+
+    private static string ResolveScenarioFileName(string? scenario)
+    {
+        return scenario switch
+        {
+            ReceiptDraftTestScenario.GeneralMarket => "sample-receipt-draft-general-market.json",
+            ReceiptDraftTestScenario.LiquorTaxMarket => "sample-receipt-draft-liquor-tax-market.json",
+            ReceiptDraftTestScenario.RestaurantTip => "sample-receipt-draft-restaurant-tip.json",
+            _ => "sample-receipt-draft-general-market.json"
+        };
+    }
+}
+
+public static class ReceiptDraftTestScenario
+{
+    public const string GeneralMarket = "general-market";
+    public const string LiquorTaxMarket = "liquor-tax-market";
+    public const string RestaurantTip = "restaurant-tip";
 }

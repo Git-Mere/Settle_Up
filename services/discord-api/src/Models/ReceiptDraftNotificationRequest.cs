@@ -16,6 +16,9 @@ public sealed class ReceiptDraftNotificationRequest
     public string? Currency { get; init; }
     public decimal? Subtotal { get; init; }
     public decimal? Tax { get; init; }
+    public decimal? Sst { get; init; }
+    public decimal? Slt { get; init; }
+    public decimal? Tip { get; init; }
     public decimal? Total { get; init; }
     public IReadOnlyList<ReceiptDraftNotificationItem>? Items { get; init; }
     public ReceiptDraftParseMetadata? ParseMetadata { get; init; }

@@ -40,9 +40,18 @@ public static class ReceiptMessageRenderer
         builder.AddField("Shared", BuildSharedSection(session, renderContext), inline: false);
         builder.AddField("Individual", BuildIndividualSection(session, renderContext), inline: false);
         builder.AddField("Unassigned", BuildUnassignedSection(session, renderContext), inline: false);
-        builder.WithFooter(renderContext.UnassignedItems.Count == 0
-            ? "모든 아이템이 배정되어 confirm 가능합니다."
-            : "Unassigned 아이템이 모두 배정되어야 confirm 가능합니다.");
+        if ((session.Tax ?? 0m) > 0m || (session.Sst ?? 0m) > 0m || (session.Slt ?? 0m) > 0m)
+        {
+            builder.AddField("Tax", BuildTaxSection(session, renderContext), inline: false);
+        }
+
+        if ((session.Tip ?? 0m) > 0m)
+        {
+            builder.AddField("Tip", BuildTipSection(session, renderContext), inline: false);
+        }
+
+        builder.WithFooter(ReceiptSessionStateService.GetConfirmBlockReason(session)
+            ?? "모든 아이템이 배정되어 confirm 가능합니다.");
         return builder.Build();
     }
 
@@ -71,9 +80,51 @@ public static class ReceiptMessageRenderer
             .AddField("Seller Name", session.MerchantName ?? "Unknown", inline: true)
             .AddField("Purchase Date", session.TransactionDate?.ToString("yyyy-MM-dd") ?? "Unknown", inline: true)
             .AddField("Buyer Name", session.UploadedByDisplayName ?? session.UploadedByUserId ?? "Unknown", inline: true)
-            .AddField("Item Total Price", FormatMoney(itemsTotal, session.Currency), inline: true)
-            .AddField("Tax", session.Tax is decimal tax ? FormatMoney(tax, session.Currency) : "Unknown", inline: true)
-            .AddField("Total Price", session.Total is decimal total ? FormatMoney(total, session.Currency) : "Unknown", inline: true);
+            .AddField("Item Total Price", FormatMoney(itemsTotal, session.Currency), inline: true);
+
+        if ((session.Tax ?? 0m) > 0m)
+        {
+            builder.AddField("Tax", FormatMoney(session.Tax!.Value, session.Currency), inline: true);
+        }
+        else
+        {
+            AddInlineSpacer(builder);
+        }
+
+        builder.AddField("Total Price", session.Total is decimal total ? FormatMoney(total, session.Currency) : "Unknown", inline: true);
+
+        var hasTip = (session.Tip ?? 0m) > 0m;
+        var hasSst = (session.Sst ?? 0m) > 0m;
+        var hasSlt = (session.Slt ?? 0m) > 0m;
+        if (hasTip || hasSst || hasSlt)
+        {
+            if (hasTip)
+            {
+                builder.AddField("Tip", FormatMoney(session.Tip!.Value, session.Currency), inline: true);
+            }
+            else
+            {
+                AddInlineSpacer(builder);
+            }
+
+            if (hasSst)
+            {
+                builder.AddField("SST", FormatMoney(session.Sst!.Value, session.Currency), inline: true);
+            }
+            else
+            {
+                AddInlineSpacer(builder);
+            }
+
+            if (hasSlt)
+            {
+                builder.AddField("SLT", FormatMoney(session.Slt!.Value, session.Currency), inline: true);
+            }
+            else
+            {
+                AddInlineSpacer(builder);
+            }
+        }
 
         return builder;
     }
@@ -91,13 +142,14 @@ public static class ReceiptMessageRenderer
                 entry.Item.GroupKey,
                 entry.Item.GroupDisplayName,
                 string.Join('|', entry.Users),
-                entry.Item.Amount));
+                entry.Item.Amount,
+                entry.Item.IsAlcohol));
 
         var lines = groups
             .Select(group =>
             {
                 var users = group.First().Users.Select(renderContext.ResolveUserDisplayName);
-                return $"• {group.Key.Name} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)} | {string.Join(", ", users)}";
+                return $"• {FormatItemName(group.Key.Name, group.Key.IsAlcohol)} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)} | {string.Join(", ", users)}";
             })
             .ToArray();
 
@@ -132,9 +184,9 @@ public static class ReceiptMessageRenderer
 
             foreach (var itemGroup in userGroup.Items
                          .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount)))
+                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol)))
             {
-                sections.Add($"• {itemGroup.Key.Name} x{itemGroup.Count()} - {FormatMoney(itemGroup.Key.Amount * itemGroup.Count(), session.Currency)}");
+                sections.Add($"• {FormatItemName(itemGroup.Key.Name, itemGroup.Key.IsAlcohol)} x{itemGroup.Count()} - {FormatMoney(itemGroup.Key.Amount * itemGroup.Count(), session.Currency)}");
             }
 
             sections.Add(string.Empty);
@@ -151,11 +203,73 @@ public static class ReceiptMessageRenderer
     private static string BuildUnassignedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
         var groups = renderContext.UnassignedItems
-            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount))
-            .Select(group => $"• {group.Key.Name} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)}")
+            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol))
+            .Select(group => $"• {FormatItemName(group.Key.Name, group.Key.IsAlcohol)} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)}")
             .ToArray();
 
         return groups.Length == 0 ? "• None" : string.Join('\n', groups);
+    }
+
+    private static string BuildTaxSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
+    {
+        var lines = renderContext.TaxLines
+            .OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase)
+            .Select(entry =>
+            {
+                var line = entry.Value;
+                var parts = new List<string>();
+
+                if (line.GeneralTax > 0m)
+                {
+                    parts.Add(FormatMoney(line.GeneralTax, session.Currency));
+                }
+
+                if (line.Sst > 0m)
+                {
+                    parts.Add($"{FormatMoney(line.Sst, session.Currency)}(SST)");
+                }
+
+                if (line.Slt > 0m)
+                {
+                    parts.Add($"{FormatMoney(line.Slt, session.Currency)}(SLT)");
+                }
+
+                if (parts.Count == 0)
+                {
+                    parts.Add(FormatMoney(0m, session.Currency));
+                }
+
+                var content = string.Join(" + ", parts);
+                if (parts.Count > 1)
+                {
+                    content += $" = {FormatMoney(line.Total, session.Currency)}";
+                }
+
+                return $"{renderContext.ResolveUserDisplayName(entry.Key)} - {content}";
+            })
+            .ToList();
+
+        if (renderContext.HasSpecialTaxWithoutAlcoholItems)
+        {
+            lines.Add($"Unallocated alcohol tax - {FormatMoney((session.Sst ?? 0m) + (session.Slt ?? 0m), session.Currency)}");
+        }
+
+        return lines.Count == 0 ? "• None" : string.Join('\n', lines);
+    }
+
+    private static string BuildTipSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
+    {
+        var lines = renderContext.TipLines
+            .OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase)
+            .Select(entry => $"{renderContext.ResolveUserDisplayName(entry.Key)} - {FormatMoney(entry.Value, session.Currency)}")
+            .ToArray();
+
+        return lines.Length == 0 ? "• None" : string.Join('\n', lines);
+    }
+
+    private static string FormatItemName(string name, bool isAlcohol)
+    {
+        return isAlcohol ? $"{name} 🥃" : name;
     }
 
     private static string FormatMoney(decimal amount, string? currency)
@@ -165,9 +279,14 @@ public static class ReceiptMessageRenderer
             : $"{amount:0.00} {currency}";
     }
 
-    private sealed record SharedGroupingKey(string GroupKey, string Name, string UsersKey, decimal Amount);
+    private static void AddInlineSpacer(EmbedBuilder builder)
+    {
+        builder.AddField("\u200B", "\u200B", inline: true);
+    }
 
-    private sealed record ItemGroupingKey(string GroupKey, string Name, decimal Amount);
+    private sealed record SharedGroupingKey(string GroupKey, string Name, string UsersKey, decimal Amount, bool IsAlcohol);
+
+    private sealed record ItemGroupingKey(string GroupKey, string Name, decimal Amount, bool IsAlcohol);
 
     private sealed class ReceiptRenderContext
     {
@@ -176,6 +295,9 @@ public static class ReceiptMessageRenderer
         public required IReadOnlyList<ReceiptLineItemState> UnassignedItems { get; init; }
         public required IReadOnlyList<ReceiptSettlementLine> SettlementLines { get; init; }
         public required decimal ItemsTotal { get; init; }
+        public required IReadOnlyDictionary<string, ParticipantTaxLine> TaxLines { get; init; }
+        public required IReadOnlyDictionary<string, decimal> TipLines { get; init; }
+        public required bool HasSpecialTaxWithoutAlcoholItems { get; init; }
         public required Func<string, string> ResolveUserDisplayName { get; init; }
 
         public static ReceiptRenderContext Create(ReceiptSessionState session)
@@ -237,22 +359,9 @@ public static class ReceiptMessageRenderer
                 return resolved;
             }
 
-            var balances = new Dictionary<string, decimal>(StringComparer.Ordinal);
-            foreach (var item in session.Items)
-            {
-                if (!readOnlyUsersByItem.TryGetValue(item.Id, out var assignedUsers) || assignedUsers.Count == 0)
-                {
-                    continue;
-                }
+            var allocation = ReceiptAllocationService.Calculate(session);
 
-                var share = decimal.Round(item.Amount / assignedUsers.Count, 2, MidpointRounding.AwayFromZero);
-                foreach (var userId in assignedUsers)
-                {
-                    balances[userId] = balances.TryGetValue(userId, out var current) ? current + share : share;
-                }
-            }
-
-            var settlementLines = balances
+            var settlementLines = allocation.SettlementTotals
                 .Where(entry => entry.Value > 0)
                 .Select(entry => new ReceiptSettlementLine(
                     entry.Key,
@@ -268,6 +377,10 @@ public static class ReceiptMessageRenderer
                 UnassignedItems = unassignedItems,
                 SettlementLines = settlementLines,
                 ItemsTotal = session.Items.Sum(item => item.Amount),
+                TaxLines = allocation.TaxLines,
+                TipLines = allocation.TipLines,
+                HasSpecialTaxWithoutAlcoholItems = ReceiptSessionStateService.RequiresAlcoholSelection(session) &&
+                                                   !ReceiptSessionStateService.HasAlcoholItems(session),
                 ResolveUserDisplayName = ResolveDisplayName
             };
         }

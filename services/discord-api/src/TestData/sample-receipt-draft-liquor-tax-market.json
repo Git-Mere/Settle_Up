@@ -1,0 +1,27 @@
+{
+  "draftId": "test-receipt-ui-001",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/test-receipt-ui-001.png",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Bottle & Basket",
+  "transactionDate": "2026-03-12",
+  "currency": "USD",
+  "subtotal": 39.00,
+  "tax": 1.20,
+  "sst": 2.40,
+  "slt": 1.50,
+  "total": 44.10,
+  "items": [
+    { "id": "item-01", "description": "Whiskey 750ml", "quantity": 1, "unitPrice": 22.00, "totalPrice": 22.00 },
+    { "id": "item-02", "description": "Orange Juice", "quantity": 1, "unitPrice": 5.00, "totalPrice": 5.00 },
+    { "id": "item-03", "description": "Ice", "quantity": 1, "unitPrice": 4.00, "totalPrice": 4.00 },
+    { "id": "item-04", "description": "Snacks", "quantity": 1, "unitPrice": 8.00, "totalPrice": 8.00 }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.98,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-03-12T20:00:00Z",
+  "updatedAtUtc": "2026-03-12T20:00:00Z"
+}

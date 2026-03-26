@@ -7,4 +7,5 @@ public sealed class ReceiptLineItemState
     public string GroupKey { get; set; } = default!;
     public string GroupDisplayName { get; set; } = default!;
     public bool IsManuallyAdded { get; init; }
+    public bool IsAlcohol { get; set; }
 }

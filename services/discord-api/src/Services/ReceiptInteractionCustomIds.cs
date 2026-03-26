@@ -6,12 +6,16 @@ public static class ReceiptInteractionCustomIds
     public const string AddItemButtonPrefix = "receipt-add-item";
     public const string RemoveItemButtonPrefix = "receipt-remove-item";
     public const string EditItemButtonPrefix = "receipt-edit-item";
+    public const string MarkAlcoholButtonPrefix = "receipt-mark-alcohol";
+    public const string TipModeProportionalButtonPrefix = "receipt-tip-mode-proportional";
+    public const string TipModeEqualButtonPrefix = "receipt-tip-mode-equal";
     public const string ConfirmButtonPrefix = "receipt-confirm";
     public const string CancelButtonPrefix = "receipt-cancel";
     public const string PageButtonPrefix = "receipt-page";
     public const string AssignSelectMenuPrefix = "receipt-item-menu";
     public const string RemoveSelectMenuPrefix = "receipt-remove-menu";
     public const string EditSelectMenuPrefix = "receipt-edit-menu";
+    public const string AlcoholSelectMenuPrefix = "receipt-alcohol-menu";
     public const string AddItemModalPrefix = "receipt-add-item-modal";
     public const string EditItemModalPrefix = "receipt-edit-item-modal";
     public const string ItemNameInputCustomId = "item_name";
@@ -25,11 +29,31 @@ public static class ReceiptInteractionCustomIds
             return new ComponentBuilder().Build();
         }
 
-        return new ComponentBuilder()
+        var builder = new ComponentBuilder()
             .WithButton("Select Item", $"{SelectItemsButtonPrefix}:{session.ReceiptId}", ButtonStyle.Primary, row: 0)
             .WithButton("Add item", $"{AddItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
             .WithButton("Remove item", $"{RemoveItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
             .WithButton("Edit item", $"{EditItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
+            .WithButton("Mark Alcohol", $"{MarkAlcoholButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0);
+
+        if ((session.Tip ?? 0m) > 0m)
+        {
+            builder
+                .WithButton(
+                    "Tip: Proportional",
+                    $"{TipModeProportionalButtonPrefix}:{session.ReceiptId}",
+                    ButtonStyle.Secondary,
+                    disabled: session.TipSplitMode == TipSplitMode.Proportional,
+                    row: 1)
+                .WithButton(
+                    "Tip: Equal Split",
+                    $"{TipModeEqualButtonPrefix}:{session.ReceiptId}",
+                    ButtonStyle.Secondary,
+                    disabled: session.TipSplitMode == TipSplitMode.Equal,
+                    row: 1);
+        }
+
+        return builder
             .WithButton(
                 "Confirm",
                 $"{ConfirmButtonPrefix}:{session.ReceiptId}",
@@ -56,6 +80,7 @@ public static class ReceiptInteractionCustomIds
             ReceiptSelectionMode.Assign => AssignSelectMenuPrefix,
             ReceiptSelectionMode.Remove => RemoveSelectMenuPrefix,
             ReceiptSelectionMode.Edit => EditSelectMenuPrefix,
+            ReceiptSelectionMode.Alcohol => AlcoholSelectMenuPrefix,
             _ => AssignSelectMenuPrefix
         };
 
@@ -133,5 +158,6 @@ public enum ReceiptSelectionMode
 {
     Assign,
     Remove,
-    Edit
+    Edit,
+    Alcohol
 }

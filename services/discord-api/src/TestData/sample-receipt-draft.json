@@ -7,8 +7,11 @@
   "transactionDate": "2026-03-12",
   "currency": "USD",
   "subtotal": 8.00,
-  "tax": 0.64,
-  "total": 8.64,
+  "tax": 0.40,
+  "sst": 0.16,
+  "slt": 0.08,
+  "tip": 1.20,
+  "total": 9.84,
   "items": [
     { "id": "item-01", "description": "Pizza Slice", "quantity": 1, "unitPrice": 3.00, "totalPrice": 3.00 },
     { "id": "item-02", "description": "Coke", "quantity": 1, "unitPrice": 2.00, "totalPrice": 2.00 },
