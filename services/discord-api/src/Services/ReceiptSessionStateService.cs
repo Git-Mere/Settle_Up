@@ -2,7 +2,7 @@ public static class ReceiptSessionStateService
 {
     public static ReceiptSessionState CreatePendingUploadSession(
         string receiptId,
-        string blobUrl,
+        string? blobUrl,
         string uploadedByUserId,
         string uploadedByDisplayName,
         string? paymentContact,
@@ -123,8 +123,6 @@ public static class ReceiptSessionStateService
 
         var safePage = Math.Clamp(page, 0, GetTotalPages(session) - 1);
         return session.Items
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Id, StringComparer.Ordinal)
             .Skip(safePage * session.PageSize)
             .Take(session.PageSize)
             .ToArray();

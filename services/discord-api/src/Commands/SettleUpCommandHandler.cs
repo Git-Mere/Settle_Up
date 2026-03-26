@@ -1,6 +1,7 @@
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 sealed class SettleUpCommandHandler
 {
@@ -13,6 +14,7 @@ sealed class SettleUpCommandHandler
     private readonly BlobUploaderProvider _blobUploaderProvider;
     private readonly ReceiptDraftSessionService _receiptDraftSessionService;
     private readonly ILogger<SettleUpCommandHandler> _logger;
+    private readonly ConcurrentDictionary<ulong, SocketMessageComponent> _uploadPromptInteractions = new();
 
     public SettleUpCommandHandler(
         BlobUploaderProvider blobUploaderProvider,
@@ -99,6 +101,7 @@ sealed class SettleUpCommandHandler
             .Build();
 
         await component.RespondWithModalAsync(modal);
+        _uploadPromptInteractions[component.User.Id] = component;
         return "modal_opened";
     }
 
@@ -141,6 +144,17 @@ sealed class SettleUpCommandHandler
 
         await modal.DeferAsync(ephemeral: true);
 
+        ReceiptSessionState? pendingSession = null;
+        if (modal.Channel is IMessageChannel pendingTargetChannel)
+        {
+            pendingSession = await _receiptDraftSessionService.CreatePendingUploadSessionAndReturnAsync(
+                modal.User.Id.ToString(),
+                modal.User.GlobalName ?? modal.User.Username,
+                paymentContact,
+                pendingTargetChannel,
+                CancellationToken.None);
+        }
+
         BlobUploadResult uploadResult;
         try
         {
@@ -149,12 +163,22 @@ sealed class SettleUpCommandHandler
         }
         catch (InvalidOperationException invalidEx)
         {
+            if (pendingSession is not null)
+            {
+                await _receiptDraftSessionService.DeletePendingUploadSessionAsync(pendingSession.ReceiptId, CancellationToken.None);
+            }
+
             await modal.FollowupAsync(invalidEx.Message, ephemeral: true);
             _logger.LogWarning("Blob upload rejected. UserId={UserId} FileName={FileName} Reason={Reason}", modal.User.Id, attachment.Filename, invalidEx.Message);
             return "invalid_image";
         }
         catch (Exception ex)
         {
+            if (pendingSession is not null)
+            {
+                await _receiptDraftSessionService.DeletePendingUploadSessionAsync(pendingSession.ReceiptId, CancellationToken.None);
+            }
+
             await modal.FollowupAsync("Blob 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true);
             _logger.LogError(ex, "Blob upload failed. UserId={UserId} FileName={FileName}", modal.User.Id, attachment.Filename);
             return "upload_error";
@@ -170,18 +194,33 @@ sealed class SettleUpCommandHandler
             uploadResult.ContainerName,
             uploadResult.BlobName);
 
-        if (modal.Channel is IMessageChannel targetChannel)
+        if (pendingSession is not null)
         {
-            await _receiptDraftSessionService.CreatePendingUploadSessionAsync(
+            await _receiptDraftSessionService.AttachBlobUrlToPendingSessionAsync(
+                pendingSession.ReceiptId,
                 uploadResult.BlobUri,
-                modal.User.Id.ToString(),
-                modal.User.GlobalName ?? modal.User.Username,
-                paymentContact,
-                targetChannel,
                 CancellationToken.None);
         }
 
+        await TryDeleteUploadPromptAsync(modal.User.Id);
         return "success";
+    }
+
+    private async Task TryDeleteUploadPromptAsync(ulong userId)
+    {
+        if (!_uploadPromptInteractions.TryRemove(userId, out var interaction))
+        {
+            return;
+        }
+
+        try
+        {
+            await interaction.DeleteOriginalResponseAsync();
+        }
+        catch
+        {
+            // Ignore cleanup failures for expired interaction tokens.
+        }
     }
 
     private static bool TryGetCommandOwnerId(string customId, out ulong ownerId)

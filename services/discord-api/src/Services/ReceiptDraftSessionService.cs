@@ -27,7 +27,7 @@ public sealed class ReceiptDraftSessionService
     }
 
     public async Task CreatePendingUploadSessionAsync(
-        string blobUrl,
+        string? blobUrl,
         string uploadedByUserId,
         string uploadedByDisplayName,
         string? paymentContact,
@@ -54,6 +54,84 @@ public sealed class ReceiptDraftSessionService
                 uploadedByUserId,
                 session.MainChannelId,
                 session.MainMessageId);
+        }, cancellationToken);
+    }
+
+    public async Task<ReceiptSessionState> CreatePendingUploadSessionAndReturnAsync(
+        string uploadedByUserId,
+        string uploadedByDisplayName,
+        string? paymentContact,
+        IMessageChannel targetChannel,
+        CancellationToken cancellationToken)
+    {
+        var tempReceiptId = $"pending-{Guid.NewGuid():N}";
+        ReceiptSessionState? createdSession = null;
+
+        await _lockManager.ExecuteAsync(tempReceiptId, async () =>
+        {
+            var session = ReceiptSessionStateService.CreatePendingUploadSession(
+                tempReceiptId,
+                blobUrl: null,
+                uploadedByUserId,
+                uploadedByDisplayName,
+                paymentContact);
+
+            session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
+
+            await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
+            _sessionStore.AddOrUpdate(session);
+            createdSession = session;
+
+            _logger.LogInformation(
+                "Pending receipt session created before upload. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId}",
+                session.ReceiptId,
+                uploadedByUserId,
+                session.MainChannelId,
+                session.MainMessageId);
+        }, cancellationToken);
+
+        return createdSession ?? throw new InvalidOperationException("Pending session creation failed.");
+    }
+
+    public async Task AttachBlobUrlToPendingSessionAsync(
+        string receiptId,
+        string blobUrl,
+        CancellationToken cancellationToken)
+    {
+        await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                throw new InvalidOperationException("Pending receipt session could not be found.");
+            }
+
+            var previousBlobUrl = session.BlobUrl;
+            session.BlobUrl = blobUrl;
+            session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            _sessionStore.AddOrUpdate(session, previousBlobUrl: previousBlobUrl);
+            await Task.CompletedTask;
+        }, cancellationToken);
+    }
+
+    public async Task DeletePendingUploadSessionAsync(string receiptId, CancellationToken cancellationToken)
+    {
+        await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await _mainMessageService.DeleteAsync(session, cancellationToken);
+            }
+            catch
+            {
+                // Ignore cleanup failures for stale pending messages.
+            }
+
+            _sessionStore.Remove(receiptId, out _);
         }, cancellationToken);
     }
 

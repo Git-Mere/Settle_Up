@@ -884,7 +884,6 @@ public sealed class ReceiptInteractionService
     {
         return session.Items
             .Where(candidate => string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal))
-            .OrderBy(candidate => candidate.Id, StringComparer.Ordinal)
             .Select((candidate, index) => new { candidate.Id, Index = index + 1 })
             .First(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal))
             .Index;
