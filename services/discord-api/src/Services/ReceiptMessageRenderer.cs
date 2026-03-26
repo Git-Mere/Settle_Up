@@ -65,7 +65,7 @@ public static class ReceiptMessageRenderer
             "Settlement",
             settlementLines.Count == 0
                 ? $"• {session.UploadedByDisplayName ?? session.UploadedByUserId ?? "Unknown"} - {FormatMoney(0m, session.Currency)}"
-                : string.Join('\n', settlementLines.Select(line => $"• {line.DisplayName} - {FormatMoney(line.Amount, session.Currency)}")),
+                : BuildConfirmedSettlementSection(session, renderContext),
             inline: false);
 
         builder.WithFooter($"Confirmed at {session.ConfirmedAtUtc?.ToString("yyyy-MM-dd HH:mm")} UTC");
@@ -265,6 +265,41 @@ public static class ReceiptMessageRenderer
             .ToArray();
 
         return lines.Length == 0 ? "• None" : string.Join('\n', lines);
+    }
+
+    private static string BuildConfirmedSettlementSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
+    {
+        var sections = new List<string>();
+
+        foreach (var line in renderContext.SettlementLines)
+        {
+            sections.Add($"• {line.DisplayName} - {FormatMoney(line.Amount, session.Currency)}");
+
+            var userItems = renderContext.ItemsByUserId.GetValueOrDefault(line.UserId) ?? [];
+            if (userItems.Count == 0)
+            {
+                sections.Add("Items: None");
+                sections.Add(string.Empty);
+                continue;
+            }
+
+            var itemSummary = string.Join(
+                ", ",
+                userItems
+                    .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol))
+                    .Select(itemGroup => $"{FormatItemName(itemGroup.Key.Name, itemGroup.Key.IsAlcohol)} x{itemGroup.Count()}"));
+
+            sections.Add($"Items: {itemSummary}");
+
+            sections.Add(string.Empty);
+        }
+
+        while (sections.Count > 0 && string.IsNullOrWhiteSpace(sections[^1]))
+        {
+            sections.RemoveAt(sections.Count - 1);
+        }
+
+        return string.Join('\n', sections);
     }
 
     private static string FormatItemName(string name, bool isAlcohol)
