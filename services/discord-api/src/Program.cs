@@ -42,6 +42,7 @@ builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
 builder.Services.AddSingleton<TestReceiptCommandHandler>();
+builder.Services.AddSingleton<HistoryCommandHandler>();
 builder.Services.AddHostedService<DiscordBotWorker>();
 
 var app = builder.Build();

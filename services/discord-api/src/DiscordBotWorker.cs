@@ -10,8 +10,10 @@ sealed class DiscordBotWorker : IHostedService
     private readonly ILogger<DiscordBotWorker> _logger;
     private readonly PingTestCommandHandler _pingTestHandler;
     private readonly TestReceiptCommandHandler _testReceiptHandler;
+    private readonly HistoryCommandHandler _historyHandler;
     private readonly SettleUpCommandHandler _settleUpHandler;
     private readonly string? _token;
+    private readonly string? _guildId;
     private bool _commandRegistered;
 
     public DiscordBotWorker(
@@ -19,6 +21,7 @@ sealed class DiscordBotWorker : IHostedService
         ILogger<DiscordBotWorker> logger,
         PingTestCommandHandler pingTestHandler,
         TestReceiptCommandHandler testReceiptHandler,
+        HistoryCommandHandler historyHandler,
         SettleUpCommandHandler settleUpHandler,
         ReceiptInteractionService receiptInteractionService)
     {
@@ -26,9 +29,11 @@ sealed class DiscordBotWorker : IHostedService
         _logger = logger;
         _pingTestHandler = pingTestHandler;
         _testReceiptHandler = testReceiptHandler;
+        _historyHandler = historyHandler;
         _settleUpHandler = settleUpHandler;
         _receiptInteractionService = receiptInteractionService;
         _token = Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
+        _guildId = Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
 
         _client.Log += HandleDiscordLogAsync;
         _client.Ready += HandleReadyAsync;
@@ -91,13 +96,32 @@ sealed class DiscordBotWorker : IHostedService
             return;
         }
 
-        await _client.Rest.CreateGlobalCommand(SettleUpCommandHandler.BuildCommand());
-        await _client.Rest.CreateGlobalCommand(PingTestCommandHandler.BuildCommand());
-        await _client.Rest.CreateGlobalCommand(TestReceiptCommandHandler.BuildCommand());
+        var commands = new[]
+        {
+            SettleUpCommandHandler.BuildCommand(),
+            PingTestCommandHandler.BuildCommand(),
+            TestReceiptCommandHandler.BuildCommand(),
+            HistoryCommandHandler.BuildCommand()
+        };
+
+        if (ulong.TryParse(_guildId, out var guildId))
+        {
+            await _client.Rest.BulkOverwriteGuildCommands(commands, guildId);
+
+            activity?.SetTag("discord.commands.scope", "guild");
+            activity?.SetTag("discord.commands.guild_id", guildId.ToString());
+            _logger.LogInformation("Discord ready; registered {CommandCount} guild commands. GuildId={GuildId}", commands.Length, guildId);
+        }
+        else
+        {
+            await _client.Rest.BulkOverwriteGlobalCommands(commands);
+
+            activity?.SetTag("discord.commands.scope", "global");
+            _logger.LogInformation("Discord ready; registered {CommandCount} global commands.", commands.Length);
+        }
 
         _commandRegistered = true;
-        activity?.SetTag("discord.commands.registered", 3);
-        _logger.LogInformation("Discord ready; registered {CommandCount} commands.", 3);
+        activity?.SetTag("discord.commands.registered", commands.Length);
     }
 
     private async Task HandleSlashCommandExecutedAsync(SocketSlashCommand command)
@@ -128,6 +152,10 @@ sealed class DiscordBotWorker : IHostedService
             else if (string.Equals(command.Data.Name, TestReceiptCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _testReceiptHandler.HandleSlashCommandAsync(command);
+            }
+            else if (string.Equals(command.Data.Name, HistoryCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            {
+                status = await _historyHandler.HandleSlashCommandAsync(command);
             }
             else
             {
