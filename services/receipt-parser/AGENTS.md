@@ -85,6 +85,9 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - 현재는 실제 경로(`receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`)와 예전 기대 경로 fallback 둘 다 읽도록 처리했다.
 - 다음 세션에서 callback 문제가 다시 나오면 가장 먼저 `ReceiptProcessingService.TryExtractUploadedByUserId(...)`와 `discord-api`의 `/getting_draft` validation을 같이 봐야 한다.
 - 현재 callback 계약상 `uploadedByUserId`는 사실상 필수다. parser 쪽 추출 규칙을 바꾸면 `discord-api` validation과 owner 권한 모델도 같이 확인해야 한다.
+- 현재 로컬과 Azure 둘 다 기준으로 Event Grid -> Document Intelligence -> Cosmos -> discord-api callback 경로 동작 확인이 끝난 상태다.
+- 최근 리팩터링으로 Cosmos container lazy initialization, blob download 경로 단순화, delivery 결과 문서 생성 공통화가 들어갔다.
+- 다음 유력 작업은 `discord-api`의 language command 작업에 맞춘 callback payload/UI 계약 영향 확인과, parser 쪽 추가 리팩터링 지속이다.
 
 ## Security Guidelines
 - 외부 이벤트 payload는 신뢰하지 않고 항상 검증한다.

@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -76,6 +76,30 @@
 - `Cancel`은 공개 메인 메시지 삭제, 열린 private panel cleanup, session store 제거, debounce cancel까지 수행한다.
 - cancel 처리 중 삭제된 공개 메시지를 다시 수정하려다 발생하던 Discord `10008 Unknown Message` 오류는 후속 `ModifyOriginalResponseAsync` 호출 제거로 정리했다.
 
+12. tax / tip / alcohol UI 추가
+- 일반 tax는 선택한 아이템 금액 비율대로 배분한다.
+- `SST`, `SLT`는 alcohol로 지정된 아이템을 고른 참여자끼리 가격 비율로 배분한다.
+- owner 전용 `Mark Alcohol` 버튼으로 alcohol item을 지정한다.
+- check embed에 `Tax`, `Tip` 섹션이 추가됐다.
+- `Tip`은 proportional / equal split 두 가지 모드를 owner가 토글할 수 있다.
+
+13. history 저장 / 조회 추가
+- confirm 시 settlement snapshot을 `discord-api`가 Cosmos에 저장한다.
+- confirm UX는 먼저 Discord 메시지를 확정하고, history 저장은 background에서 retry와 함께 처리한다.
+- `/history list`, `/history detail index:<번호>` slash command가 추가됐다.
+- `index:1`은 현재 시점 기준 가장 최근 history다.
+
+14. 업로드 UX 정리
+- `/settle-up` 업로드 모달 제출 직후 pending 공개 메시지를 먼저 띄운다.
+- 업로드 성공 후 기존 ephemeral 업로드 버튼 메시지는 삭제한다.
+- check 단계의 item 선택 패널은 영수증 원래 순서를 유지한다.
+
+15. 최근 리팩터링
+- rendered embed를 세션에 캐시해 같은 상태에서 중복 렌더링을 줄였다.
+- settlement history Cosmos container를 lazy 초기화해 반복 `CreateContainerIfNotExistsAsync` 호출을 줄였다.
+- 미사용 publish/helper 메서드와 미사용 계산 helper를 정리했다.
+- `/pingtest`, `/test`는 이제 Development 환경에서만 등록된다.
+
 ## Current File Layout (relevant)
 ```text
 services/discord-api/
@@ -85,15 +109,25 @@ services/discord-api/
 │  ├─ BlobUploaderProvider.cs
 │  ├─ DiscordApi.csproj
 │  ├─ Commands/
+│  │  ├─ HistoryCommandHandler.cs
 │  │  ├─ PingTestCommandHandler.cs
 │  │  ├─ SettleUpCommandHandler.cs
 │  │  └─ TestReceiptCommandHandler.cs
 │  ├─ Models/
+│  │  ├─ ConfirmedSettlementHistoryDocument.cs
 │  │  └─ ReceiptDraftNotificationRequest.cs
+│  ├─ Services/
+│  │  ├─ ReceiptInteractionService.cs
+│  │  ├─ ReceiptMainMessageService.cs
+│  │  ├─ ReceiptMessageRenderer.cs
+│  │  ├─ SettlementHistoryCosmosRepository.cs
+│  │  └─ SettlementHistoryMessageRenderer.cs
 │  ├─ Storage/
 │  │  └─ BlobImageUploader.cs
 │  ├─ TestData/
-│  │  └─ sample-receipt-draft.json
+│  │  ├─ sample-receipt-draft-general-market.json
+│  │  ├─ sample-receipt-draft-liquor-tax-market.json
+│  │  └─ sample-receipt-draft-restaurant-tip.json
 │  └─ Observability/
 │     └─ Telemetry.cs
 ├─ Dockerfile
@@ -113,9 +147,11 @@ services/discord-api/
 3. 실행 사용자 id로 payload 덮어쓰기
 4. 기존 receipt session/UI 생성 경로 재사용
 5. 현재 채널에 테스트 UI 전송
+6. 이 명령은 Development 환경에서만 등록된다.
 
 ### `/pingtest`
 - 즉시 ephemeral 응답: `pong! slash command 정상 작동 중입니다.`
+- 이 명령도 Development 환경에서만 등록된다.
 
 ### `/settle-up`
 1. slash 실행
@@ -123,7 +159,14 @@ services/discord-api/
 3. 버튼 클릭 시 모달 열기
 4. 모달 내 file upload component로 파일 제출
 5. 제출 attachment를 Blob에 업로드
-6. 성공 시 ephemeral로 `container/blob/url` 반환
+6. 공개 채널에 pending 메시지를 먼저 올림
+7. Blob 업로드 성공 후 parser가 draft callback을 보내면 기존 pending 메시지를 draft check 메시지로 교체
+
+### `/history`
+- `/history list`
+  - 현재 사용자(owner)가 confirm한 최근 history를 최신순으로 보여준다.
+- `/history detail index:<번호>`
+  - 현재 시점 기준 최신순 `index`번째 history 상세를 보여준다.
 
 ## Environment Variables (currently used)
 필수/준필수:
@@ -135,6 +178,9 @@ services/discord-api/
 - `OTEL_SERVICE_NAME` (기본값: `discord-api`)
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`
 - `ASPNETCORE_URLS` (기본값: `http://0.0.0.0:5000`)
+- `SettlementHistory__CosmosConnectionString` 또는 `SettlementHistory__CosmosAccountEndpoint`
+- `SettlementHistory__CosmosDatabaseId`
+- `SettlementHistory__CosmosContainerId`
 
 추가 참고:
 - `Program.cs`에서 `DotNetEnv`로 `../.env`를 로드함 (`Env.Load("../.env")`).
@@ -156,7 +202,10 @@ services/discord-api/
 ## Current Constraints / Next Step
 - `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 기본 callback endpoint 골격은 추가됐다.
 - `docs/decisions/012-serialize-receipt-session-updates-and-debounce-public-message-publishing`와 `013-use-session-scoped-in-memory-cache-for-discord-receipt-ui`는 현재 동시성/성능 최적화의 기준 문서다.
-- 다음 작업은 실제 Azure/Discord 환경에서 receipt UI 안정성 확인, stale private panel cleanup 검증, callback 인증/검증 강화다.
+- 현재 로컬과 Azure 둘 다 기준으로 receipt upload -> pending -> parser draft -> check -> confirm -> history 저장/조회까지 동작 확인이 끝났다.
+- 다음 유력 작업은 language command 추가다.
+- 현재 후보 방향은 한국어/영어 선택이고, 공개 메시지와 private/ephemeral 메시지의 언어 범위를 어떻게 나눌지 먼저 결정하는 것이 좋다.
+- 그 다음 축은 계속 리팩터링이다. 특히 언어 전환 전에 UI 문자열 분리 구조를 먼저 정리하면 다음 작업이 쉬워진다.
 - shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
 
 ## Known Decisions / Open Items
@@ -173,20 +222,18 @@ services/discord-api/
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
 4. UI language switching
-- 제출/대외 사용성을 고려해 slash command 이름은 영어로 유지하는 방향이 적절하다.
-- 후보 명령은 `/language english|korean|auto` 형태다.
-- 권장 정책은 공개 메시지(public embed/button text)는 영어 고정, private panel/ephemeral 안내문은 사용자별 언어 설정을 적용하는 방식이다.
-- 이 방식이면 한국/미국 사용자가 같은 채널에 있어도 공개 상태는 모두가 읽기 쉽고, 개인 상호작용은 각자 편한 언어로 볼 수 있다.
-- 초기 구현은 in-memory user preference로 시작할 수 있지만, 재시작 후에도 유지하려면 이후 persistent storage가 필요하다.
-- 이번 세션에서는 구현하지 않았고, UI 문구 정리 후속 작업으로 미뤄 둔다.
+- 다음 유력 기능 작업이다.
+- 현재 예상 명령은 `/language`이고 한국어/영어 선택이 우선 후보다.
+- 공개 메시지(public embed/button text)와 private/ephemeral 문구에 같은 언어를 쓸지, 공개는 고정하고 private만 사용자별 설정을 적용할지 먼저 정해야 한다.
+- 현재는 구현하지 않았고, language 정책 결정 + UI 문자열 정리가 다음 세션 유력 작업이다.
 
 ## Next Codex Session Quick Start
-1. 실제 Azure/Discord 환경에서 1초 디바운스 + 세션 직렬화 동작 재검증
-2. `confirm` 시 private panel cleanup이 토큰 만료 없이 안정적으로 되는지 확인
-3. `/settle-up` 실경로와 `/test` shortcut 경로 차이 재검증
-4. `/getting_draft` 인증/검증 규칙 추가
+1. language command 정책 결정
+2. UI 문자열을 언어 전환에 맞게 분리할 구조 설계
+3. `/getting_draft` 인증/검증 규칙 추가
+4. history / tax / tip UI를 언어 선택과 함께 어떻게 유지할지 확인
 5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
-6. 필요 시 `docs/decisions/012`와 `013`을 먼저 확인하고 문서 업데이트는 `docs/decisions/README.md` 포맷을 따른다
+6. 필요 시 `docs/decisions/012`, `013`, `015`, `016`, `017`, `018`을 먼저 확인하고 문서 업데이트는 `docs/decisions/README.md` 포맷을 따른다
 7. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
@@ -194,10 +241,14 @@ services/discord-api/
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
 - `/test` 기준 select/add/remove/edit/confirm 흐름과 private panel lifecycle 정리 확인
+- `/history list`, `/history detail index:<번호>` 동작 확인
+- tax/tip/alcohol UI와 history 저장/조회가 로컬과 Azure 둘 다에서 동작 확인됨
 - 공개 메인 메시지 수정 경로, 세션 직렬화, 1초 디바운스, 메시지 캐시, render context 캐시, retry 적용 상태
+- rendered embed cache와 history Cosmos container lazy initialization 리팩터링 반영
 - add item 후 edit 시 발생하던 `Modal CustomId <= 100` 오류는 짧은 edit token 매핑으로 수정
 - check 공개 메시지 item 순서는 원본 영수증 순서 유지로 변경
 - confirmed embed 필드명은 `Pay to`로 변경
 - confirm / add item 후 별도 텍스트 응답 없이 embed만 남도록 정리
 - owner 전용 `Cancel` 버튼으로 공개 메시지 + 열린 private panel + session cleanup 가능
 - cancel 시 `Discord 10008 Unknown Message` 오류는 재현 후 수정했고 현재 빌드 통과 상태
+- `/pingtest`, `/test`는 Development 환경에서만 등록되도록 변경됨

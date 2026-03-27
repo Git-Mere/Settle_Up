@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션에서 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정" 상태다.
+이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링" 상태다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -64,6 +64,13 @@
 - 공통 후처리 로직을 `SaveAndSendDraftAsync(...)`로 묶어 로컬/운영 경로가 같은 저장 및 전송 흐름을 사용한다.
 - `EventGridWebhookEndpoint`에서 payload 파싱을 `TryParseEventsAsync(...)`로 분리해 가독성 개선.
 - 원문 OCR 결과(`rawResultJson`) 저장을 제거해 Cosmos 저장 문서를 정규화 필드만 포함하도록 정리했다.
+
+10. 최근 성능 / 구조 정리
+- Cosmos 저장소는 이제 container를 lazy 초기화해 매 save마다 `CreateContainerIfNotExistsAsync`를 반복 호출하지 않는다.
+- Blob 다운로드는 `DownloadToAsync + MemoryStream + BinaryData.FromStream` 대신 `DownloadContentAsync`로 바로 `BinaryData`를 사용한다.
+- `DocumentIntelligenceReceiptParser`는 `DefaultAzureCredential` 인스턴스를 재사용한다.
+- `DiscordApiDraftClient`는 실제 사용하지 않는 마지막 retry delay 항목을 제거했다.
+- `ReceiptProcessingService`의 sent/pending notification 문서 생성은 공통 helper로 정리했다.
 
 ## Current File Layout (relevant)
 ```text
@@ -193,14 +200,19 @@ Cosmos 인증:
 - `CurrencyCode`가 없을 때 `$` 기준으로 `USD`를 추론한다.
 - 다국적 통화 처리 정책은 추가 정의가 필요하다.
 
+5. language command 후속 영향
+- 다음 세션에서 `discord-api`에 language command가 들어갈 가능성이 높다.
+- parser payload 필드 자체가 크게 바뀔 가능성은 낮지만, 공개/비공개 UI 문구와 downstream contract 설명 문서가 함께 갱신될 수 있다.
+
 ## Next Codex Session Quick Start
-1. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 안정적으로 들어가는지 재검증
-2. discord-api callback 인증/검증 규칙 추가
-3. 전송 실패 문서 재처리 경로 설계
-4. discord-api 후속 Discord 메시지 생성과 callback 소비 연결
-5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
-6. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다
-7. 변경 후 검증:
+1. discord-api language command 작업 시 callback/UI 계약 영향 확인
+2. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 계속 안정적으로 들어가는지 재검증
+3. discord-api callback 인증/검증 규칙 추가
+4. 전송 실패 문서 재처리 경로 설계
+5. 추가 리팩터링이 필요하면 parsing / persistence / delivery 경계를 유지한 채 진행
+6. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
+7. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다
+8. 변경 후 검증:
 - `dotnet build services/receipt-parser/receipt-parser.csproj -c Release`
 
 ## Last Verified State
@@ -212,4 +224,6 @@ Cosmos 인증:
 - 빌드 검증: `dotnet build services/receipt-parser/receipt-parser.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
 - 실제 Azure 테스트에서 `uploadedByUserId` null로 callback이 실패하던 이슈를 확인했고, Blob path 추출 로직을 수정했다
-- next planned change: add retry-safe reprocessing/authentication around discord-api callback delivery
+- 로컬과 Azure 둘 다 기준으로 callback 포함 전체 파이프라인 동작 확인됨
+- Cosmos lazy container init, blob download path simplification, notification document builder 정리까지 반영됨
+- next planned change: language-command 영향 확인 + callback auth/reprocessing + continued refactoring

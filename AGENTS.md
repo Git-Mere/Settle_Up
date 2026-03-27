@@ -85,11 +85,17 @@ If making changes:
 - if build, Docker, or shared-project behavior changes, verify the matching workflow file as part of the same change
 
 ## Current Project Notes
-- `discord-api`는 현재 업로드 pending 메시지, parser draft 수신, 체크 섹션 embed, item selection/add/remove/edit, confirm embed까지 실제 서버 기준으로 다시 동작 검증 중이다.
+- `discord-api`는 현재 업로드 pending 메시지, parser draft 수신, 체크 섹션 embed, item selection/add/remove/edit, confirm embed, history 조회까지 로컬과 Azure 둘 다에서 동작 확인이 끝난 상태다.
 - `discord-api` receipt UI는 이제 기본적으로 기존 공개 메인 메시지를 수정하는 방향으로 정리됐다. select/add/remove/edit는 private 패널을 통해 상태를 바꾸고, 공개 메시지는 세션별 직렬화 + 1초 디바운스로 갱신한다.
-- `discord-api`에는 현재 receipt session 단위 in-memory 락(`ReceiptSessionLockManager`), 공개 메인 메시지 1초 디바운스(`ReceiptMainMessageDebounceService`), 메인 메시지 객체 캐시, 렌더링 계산 캐시가 들어가 있다.
+- `discord-api`에는 현재 receipt session 단위 in-memory 락(`ReceiptSessionLockManager`), 공개 메인 메시지 1초 디바운스(`ReceiptMainMessageDebounceService`), 메인 메시지 객체 캐시, 렌더링 결과 캐시가 들어가 있다.
 - `discord-api`의 private selection panel은 사용자+모드 기준으로 하나만 유지되며, confirm 시 열린 private panel 정리를 시도한다.
 - `discord-api` 기준 권한 모델은 현재 `Select item`은 참여자 누구나 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더(owner)만 가능하다.
+- `discord-api`는 현재 tax/tip 정책과 history 기능까지 포함한다. confirm은 먼저 Discord UI를 갱신하고, settlement history는 background에서 Cosmos에 저장하며 실패 시 retry 후 ephemeral 오류를 남긴다.
+- `discord-api`의 `/history`는 현재 `/history list`, `/history detail index:<번호>` 구조이고, `index:1`은 현재 시점 기준 가장 최근 history를 뜻한다.
+- `discord-api`의 debug slash command(`/pingtest`, `/test`)는 이제 Development 환경에서만 등록된다. Azure Production에서는 보이지 않는 것이 정상이다.
 - `receipt-parser` -> `discord-api` HTTP callback 경로는 계속 HTTP 기반이고, `/test`는 parser callback 이후 UI를 재현하는 shortcut 경로다. 핵심 세션 생성/갱신 로직은 둘 다 `ReceiptDraftSessionService`를 공유한다.
 - `receipt-parser`는 실제 Azure Blob URL 패턴 기준으로 `uploadedByUserId`를 다시 추출하도록 수정됐다. 따라서 blob URL 패턴을 다시 바꾸면 parser의 추출 규칙과 `discord-api` 계약을 함께 확인해야 한다.
+- `receipt-parser`도 현재 로컬과 Azure 둘 다에서 Event Grid -> Document Intelligence -> Cosmos -> discord-api callback 흐름이 다시 동작 확인된 상태다.
+- 다음 세션에서 유력한 기능 작업은 language command 추가다. 현재 후보 방향은 한국어/영어 선택이고, 공개 메시지와 private/ephemeral 메시지의 언어 범위를 어떻게 나눌지 정책 결정이 먼저 필요하다.
+- 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `discord-api`는 언어 전환 도입 전에 UI 문자열 분리 구조를 먼저 보는 게 좋다.
 - `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.

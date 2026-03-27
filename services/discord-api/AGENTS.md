@@ -76,11 +76,15 @@ If the service structure changes significantly, update:
 - related workflow/Docker settings if shared project references or build contexts change
 
 ## Current Service Notes
-- receipt selection UI는 현재 public embed + private panel 조합으로 동작하며 `/test`가 parser callback 이후 상태를 재현하는 빠른 테스트 경로다.
+- receipt selection UI는 현재 public embed + private panel 조합으로 동작하며 `/test`가 parser callback 이후 상태를 재현하는 빠른 테스트 경로다. 로컬과 Azure 둘 다에서 현재 핵심 플로우 동작 확인이 끝난 상태다.
 - add/remove/edit/confirm 로직은 `ReceiptInteractionService`가 처리하고, 공개 메인 메시지 수정/발행은 `ReceiptMainMessageService`, draft session 생성/갱신은 `ReceiptDraftSessionService`가 담당한다.
 - routine interaction(select/add/remove/edit)은 공개 메인 메시지를 즉시 갱신하지 않고 1초 디바운스 후 갱신한다. confirm은 즉시 confirmed 메시지로 갱신한다.
 - receipt session mutation은 현재 `ReceiptSessionLockManager`로 직렬화된다. 다음 세션에서 동시성/성능 이슈를 볼 때는 이 락 경로를 먼저 확인한다.
-- 공개 메인 메시지는 세션 내 `MainMessage` 캐시를 사용하고, embed 렌더링은 render context 캐시를 사용한다.
+- 공개 메인 메시지는 세션 내 `MainMessage` 캐시를 사용하고, embed 렌더링은 세션 단위 rendered message cache를 사용한다.
 - private selection panel은 사용자+모드 기준으로 하나만 유지하며, confirm 시 열린 panel cleanup을 시도한다.
 - 권한 모델은 현재 `Select item`만 참여자 누구나 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더만 가능하다.
 - Discord API 일시 오류(`429/502/503/504`)는 `ReceiptMainMessageService`의 retry 경로로 흡수한다. UI 지연/실패를 볼 때는 권한 이슈와 transient error를 구분해서 확인한다.
+- settlement history는 `discord-api`가 owner 기준으로 Cosmos에 저장하고, 현재 `/history list`, `/history detail index:<번호>`로 조회한다.
+- confirm은 먼저 Discord UI를 업데이트하고 history 저장은 background로 수행한다. 저장 실패 시 retry 후 ephemeral 오류 메시지를 남긴다.
+- debug command인 `/pingtest`, `/test`는 이제 Development 환경에서만 등록된다. Azure Production에서 안 보이는 것이 정상이다.
+- 다음 유력 작업은 language command 추가다. 한국어/영어 선택을 넣을 가능성이 높고, 그 전에 공개 메시지와 private/ephemeral 문구를 어느 범위까지 분리할지 정책을 먼저 정하는 것이 좋다.
