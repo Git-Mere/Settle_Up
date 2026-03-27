@@ -1,6 +1,7 @@
 using System.Globalization;
 using Azure;
 using Azure.AI.DocumentIntelligence;
+using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,7 @@ public sealed class DocumentIntelligenceReceiptParser
     private readonly ReceiptParserOptions _options;
     private readonly ILogger<DocumentIntelligenceReceiptParser> _logger;
     private readonly DocumentIntelligenceClient _documentClient;
+    private readonly TokenCredential _defaultAzureCredential = new DefaultAzureCredential();
 
     public DocumentIntelligenceReceiptParser(
         IOptions<ReceiptParserOptions> options,
@@ -30,7 +32,7 @@ public sealed class DocumentIntelligenceReceiptParser
 
         var endpoint = new Uri(_options.DocumentIntelligenceEndpoint);
         _documentClient = string.IsNullOrWhiteSpace(_options.DocumentIntelligenceApiKey)
-            ? new DocumentIntelligenceClient(endpoint, new DefaultAzureCredential())
+            ? new DocumentIntelligenceClient(endpoint, _defaultAzureCredential)
             : new DocumentIntelligenceClient(endpoint, new AzureKeyCredential(_options.DocumentIntelligenceApiKey));
     }
 
@@ -40,11 +42,11 @@ public sealed class DocumentIntelligenceReceiptParser
         activity?.SetTag("blob.url", blobUrl);
         _logger.LogInformation("Receipt parsing started. SourceType=blob BlobUrl={BlobUrl}", blobUrl);
 
-        var blobClient = new BlobClient(new Uri(blobUrl), new DefaultAzureCredential());
-        await using var stream = new MemoryStream();
+        var blobClient = new BlobClient(new Uri(blobUrl), _defaultAzureCredential);
         try
         {
-            await blobClient.DownloadToAsync(stream, cancellationToken);
+            var downloadResult = await blobClient.DownloadContentAsync(cancellationToken);
+            return await ParseFromBinaryAsync(downloadResult.Value.Content, blobUrl, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -53,11 +55,6 @@ public sealed class DocumentIntelligenceReceiptParser
             _logger.LogError(ex, "Receipt blob download failed. BlobUrl={BlobUrl}", blobUrl);
             throw;
         }
-
-        stream.Position = 0;
-
-        var binaryData = BinaryData.FromStream(stream);
-        return await ParseFromBinaryAsync(binaryData, blobUrl, cancellationToken);
     }
 
     public async Task<ParsedReceiptResult> ParseFromBinaryAsync(

@@ -12,6 +12,7 @@ public sealed class CosmosReceiptRepository
     private readonly ILogger<CosmosReceiptRepository> _logger;
     private readonly CosmosClient _cosmosClient;
     private readonly ReceiptParserOptions _options;
+    private readonly Lazy<Task<Container>> _containerTask;
 
     public CosmosReceiptRepository(
         IOptions<ReceiptParserOptions> options,
@@ -23,18 +24,23 @@ public sealed class CosmosReceiptRepository
         if (!string.IsNullOrWhiteSpace(_options.CosmosConnectionString))
         {
             _cosmosClient = new CosmosClient(_options.CosmosConnectionString);
-            return;
         }
-
-        if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
+        else
         {
-            throw new InvalidOperationException(
-                "ReceiptParser:CosmosConnectionString 또는 ReceiptParser:CosmosAccountEndpoint 설정이 필요합니다.");
+            if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
+            {
+                throw new InvalidOperationException(
+                    "ReceiptParser:CosmosConnectionString 또는 ReceiptParser:CosmosAccountEndpoint 설정이 필요합니다.");
+            }
+
+            _cosmosClient = new CosmosClient(
+                accountEndpoint: _options.CosmosAccountEndpoint,
+                tokenCredential: new DefaultAzureCredential());
         }
 
-        _cosmosClient = new CosmosClient(
-            accountEndpoint: _options.CosmosAccountEndpoint,
-            tokenCredential: new DefaultAzureCredential());
+        _containerTask = new Lazy<Task<Container>>(
+            () => InitializeContainerAsync(CancellationToken.None),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public async Task SaveAsync(ReceiptDocument document, CancellationToken cancellationToken)
@@ -47,15 +53,9 @@ public sealed class CosmosReceiptRepository
             _options.CosmosDatabaseId,
             _options.CosmosContainerId);
 
-        var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
         try
         {
-            var containerResponse = await database.CreateContainerIfNotExistsAsync(
-                id: _options.CosmosContainerId,
-                partitionKeyPath: "/Id",
-                cancellationToken: cancellationToken);
-
-            var container = containerResponse.Container;
+            var container = await GetContainerAsync(cancellationToken);
             await container.UpsertItemAsync(
                 item: document,
                 partitionKey: new PartitionKey(document.Id),
@@ -70,5 +70,31 @@ public sealed class CosmosReceiptRepository
         }
 
         _logger.LogInformation("Cosmos write completed. ReceiptId={ReceiptId}", document.Id);
+    }
+
+    private async Task<Container> GetContainerAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken == CancellationToken.None)
+        {
+            return await _containerTask.Value;
+        }
+
+        if (_containerTask.IsValueCreated)
+        {
+            return await _containerTask.Value.WaitAsync(cancellationToken);
+        }
+
+        return await InitializeContainerAsync(cancellationToken);
+    }
+
+    private async Task<Container> InitializeContainerAsync(CancellationToken cancellationToken)
+    {
+        var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
+        var containerResponse = await database.CreateContainerIfNotExistsAsync(
+            id: _options.CosmosContainerId,
+            partitionKeyPath: "/Id",
+            cancellationToken: cancellationToken);
+
+        return containerResponse.Container;
     }
 }

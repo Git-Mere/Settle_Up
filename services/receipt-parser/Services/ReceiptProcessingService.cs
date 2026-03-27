@@ -195,7 +195,7 @@ public sealed class ReceiptProcessingService
             Slt = parsed.Slt,
             Tip = parsed.Tip,
             Total = total,
-            Items = parsed.Items.ToList(),
+            Items = [.. parsed.Items],
             ParseMetadata = parsed.ParseMetadata,
             NotificationStatus = NotificationStatuses.Pending,
             NotificationAttemptCount = 0,
@@ -229,31 +229,13 @@ public sealed class ReceiptProcessingService
     private static ReceiptDocument BuildNotificationSentDocument(ReceiptDocument document, int attemptCount)
     {
         var now = DateTimeOffset.UtcNow;
-        return new ReceiptDocument
-        {
-            Id = document.Id,
-            Status = document.Status,
-            BlobUrl = document.BlobUrl,
-            UploadedByUserId = document.UploadedByUserId,
-            MerchantName = document.MerchantName,
-            TransactionDate = document.TransactionDate,
-            Currency = document.Currency,
-            Subtotal = document.Subtotal,
-            Tax = document.Tax,
-            Sst = document.Sst,
-            Slt = document.Slt,
-            Tip = document.Tip,
-            Total = document.Total,
-            Items = document.Items,
-            ParseMetadata = document.ParseMetadata,
-            NotificationStatus = NotificationStatuses.Sent,
-            NotificationAttemptCount = attemptCount,
-            LastNotificationAttemptAt = now,
-            NotificationSentAtUtc = now,
-            LastNotificationError = null,
-            CreatedAtUtc = document.CreatedAtUtc,
-            UpdatedAtUtc = now
-        };
+        return BuildNotificationDocument(
+            document,
+            NotificationStatuses.Sent,
+            attemptCount,
+            now,
+            notificationSentAtUtc: now,
+            lastNotificationError: null);
     }
 
     private static ReceiptDocument BuildNotificationPendingDocument(
@@ -262,31 +244,13 @@ public sealed class ReceiptProcessingService
         string errorMessage)
     {
         var now = DateTimeOffset.UtcNow;
-        return new ReceiptDocument
-        {
-            Id = document.Id,
-            Status = document.Status,
-            BlobUrl = document.BlobUrl,
-            UploadedByUserId = document.UploadedByUserId,
-            MerchantName = document.MerchantName,
-            TransactionDate = document.TransactionDate,
-            Currency = document.Currency,
-            Subtotal = document.Subtotal,
-            Tax = document.Tax,
-            Sst = document.Sst,
-            Slt = document.Slt,
-            Tip = document.Tip,
-            Total = document.Total,
-            Items = document.Items,
-            ParseMetadata = document.ParseMetadata,
-            NotificationStatus = NotificationStatuses.Pending,
-            NotificationAttemptCount = attemptCount,
-            LastNotificationAttemptAt = now,
-            NotificationSentAtUtc = null,
-            LastNotificationError = TruncateErrorMessage(errorMessage),
-            CreatedAtUtc = document.CreatedAtUtc,
-            UpdatedAtUtc = now
-        };
+        return BuildNotificationDocument(
+            document,
+            NotificationStatuses.Pending,
+            attemptCount,
+            now,
+            notificationSentAtUtc: null,
+            lastNotificationError: TruncateErrorMessage(errorMessage));
     }
 
     private static int GetAttemptCount(Exception ex)
@@ -302,5 +266,40 @@ public sealed class ReceiptProcessingService
         return errorMessage.Length <= maxLength
             ? errorMessage
             : errorMessage[..maxLength];
+    }
+
+    private static ReceiptDocument BuildNotificationDocument(
+        ReceiptDocument document,
+        string notificationStatus,
+        int attemptCount,
+        DateTimeOffset now,
+        DateTimeOffset? notificationSentAtUtc,
+        string? lastNotificationError)
+    {
+        return new ReceiptDocument
+        {
+            Id = document.Id,
+            Status = document.Status,
+            BlobUrl = document.BlobUrl,
+            UploadedByUserId = document.UploadedByUserId,
+            MerchantName = document.MerchantName,
+            TransactionDate = document.TransactionDate,
+            Currency = document.Currency,
+            Subtotal = document.Subtotal,
+            Tax = document.Tax,
+            Sst = document.Sst,
+            Slt = document.Slt,
+            Tip = document.Tip,
+            Total = document.Total,
+            Items = document.Items,
+            ParseMetadata = document.ParseMetadata,
+            NotificationStatus = notificationStatus,
+            NotificationAttemptCount = attemptCount,
+            LastNotificationAttemptAt = now,
+            NotificationSentAtUtc = notificationSentAtUtc,
+            LastNotificationError = lastNotificationError,
+            CreatedAtUtc = document.CreatedAtUtc,
+            UpdatedAtUtc = now
+        };
     }
 }

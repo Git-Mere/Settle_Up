@@ -13,8 +13,7 @@ public sealed class DiscordApiDraftClient
     [
         TimeSpan.FromSeconds(1),
         TimeSpan.FromSeconds(2),
-        TimeSpan.FromSeconds(4),
-        TimeSpan.FromSeconds(8)
+        TimeSpan.FromSeconds(4)
     ];
 
     private const int MaxRetries = 3;
