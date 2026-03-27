@@ -6,19 +6,32 @@ public static class ReceiptMessageRenderer
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        if (session.CachedRenderedMessage is not null &&
+            session.CachedRenderedAtUtc is not null &&
+            session.CachedRenderedAtUtc >= session.UpdatedAtUtc)
+        {
+            return session.CachedRenderedMessage;
+        }
+
         var renderContext = ReceiptRenderContext.Create(session);
+        RenderedReceiptMessage renderedMessage;
 
         if (!session.IsDraftReady)
         {
-            return new RenderedReceiptMessage(RenderPendingEmbed(session));
+            renderedMessage = new RenderedReceiptMessage(RenderPendingEmbed(session));
         }
-
-        if (session.IsConfirmed)
+        else if (session.IsConfirmed)
         {
-            return new RenderedReceiptMessage(RenderConfirmedEmbed(session, renderContext));
+            renderedMessage = new RenderedReceiptMessage(RenderConfirmedEmbed(session, renderContext));
+        }
+        else
+        {
+            renderedMessage = new RenderedReceiptMessage(RenderCheckEmbed(session, renderContext));
         }
 
-        return new RenderedReceiptMessage(RenderCheckEmbed(session, renderContext));
+        session.CachedRenderedMessage = renderedMessage;
+        session.CachedRenderedAtUtc = DateTimeOffset.UtcNow;
+        return renderedMessage;
     }
 
     private static Embed RenderPendingEmbed(ReceiptSessionState session)

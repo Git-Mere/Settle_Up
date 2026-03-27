@@ -79,6 +79,7 @@ public static class ReceiptSessionStateService
         session.Items = ExpandItems(payload.Items).ToList();
         session.IsDraftReady = true;
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        InvalidateRenderCache(session);
 
         RemoveSelectionsForMissingItems(session);
     }
@@ -178,6 +179,7 @@ public static class ReceiptSessionStateService
         }
 
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        InvalidateRenderCache(session);
     }
 
     public static bool RemoveItem(ReceiptSessionState session, string itemId)
@@ -286,6 +288,7 @@ public static class ReceiptSessionStateService
         }
 
         session.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        InvalidateRenderCache(session);
     }
 
     public static IReadOnlyList<string> GetUsersForItem(ReceiptSessionState session, string itemId)
@@ -332,33 +335,6 @@ public static class ReceiptSessionStateService
     {
         ArgumentNullException.ThrowIfNull(session);
         return GetConfirmBlockReason(session) is null;
-    }
-
-    public static decimal GetItemsTotal(ReceiptSessionState session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        return session.Items.Sum(item => item.Amount);
-    }
-
-    public static IReadOnlyList<ReceiptSettlementLine> BuildSettlementLines(ReceiptSessionState session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-
-        return ReceiptAllocationService.Calculate(session).SettlementTotals
-            .Where(entry => entry.Value > 0)
-            .Select(entry => new ReceiptSettlementLine(
-                entry.Key,
-                ResolveUserDisplayName(session, entry.Key),
-                decimal.Round(entry.Value, 2, MidpointRounding.AwayFromZero)))
-            .OrderBy(line => line.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    public static decimal GetIndividualTotalForUser(ReceiptSessionState session, string userId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        var allocation = ReceiptAllocationService.Calculate(session);
-        return allocation.ParticipantBreakdowns.GetValueOrDefault(userId)?.Subtotal ?? 0m;
     }
 
     public static bool HasAlcoholItems(ReceiptSessionState session)
@@ -510,5 +486,13 @@ public static class ReceiptSessionStateService
         var itemsTotal = session.Items.Sum(item => item.Amount);
         session.Subtotal = itemsTotal;
         session.Total = itemsTotal + (session.Tax ?? 0m) + (session.Sst ?? 0m) + (session.Slt ?? 0m) + (session.Tip ?? 0m);
+        InvalidateRenderCache(session);
+    }
+
+    public static void InvalidateRenderCache(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        session.CachedRenderedMessage = null;
+        session.CachedRenderedAtUtc = null;
     }
 }

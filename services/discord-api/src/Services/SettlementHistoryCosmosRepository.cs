@@ -7,6 +7,7 @@ public sealed class SettlementHistoryCosmosRepository
     private readonly CosmosClient _cosmosClient;
     private readonly SettlementHistoryOptions _options;
     private readonly ILogger<SettlementHistoryCosmosRepository> _logger;
+    private readonly Lazy<Task<Container>> _containerTask;
 
     public SettlementHistoryCosmosRepository(
         IOptions<SettlementHistoryOptions> options,
@@ -18,37 +19,37 @@ public sealed class SettlementHistoryCosmosRepository
         if (!string.IsNullOrWhiteSpace(_options.CosmosConnectionString))
         {
             _cosmosClient = new CosmosClient(_options.CosmosConnectionString);
-            return;
         }
-
-        if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
+        else
         {
-            throw new InvalidOperationException(
-                "SettlementHistory:CosmosConnectionString 또는 SettlementHistory:CosmosAccountEndpoint 설정이 필요합니다.");
+            if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
+            {
+                throw new InvalidOperationException(
+                    "SettlementHistory:CosmosConnectionString 또는 SettlementHistory:CosmosAccountEndpoint 설정이 필요합니다.");
+            }
+
+            _cosmosClient = new CosmosClient(
+                accountEndpoint: _options.CosmosAccountEndpoint,
+                tokenCredential: new DefaultAzureCredential());
         }
 
-        _cosmosClient = new CosmosClient(
-            accountEndpoint: _options.CosmosAccountEndpoint,
-            tokenCredential: new DefaultAzureCredential());
+        _containerTask = new Lazy<Task<Container>>(
+            () => InitializeContainerAsync(CancellationToken.None),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public async Task SaveAsync(ConfirmedSettlementHistoryDocument document, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
         _logger.LogInformation(
             "Settlement history write started. ReceiptId={ReceiptId} DatabaseId={DatabaseId} ContainerId={ContainerId}",
             document.ReceiptId,
             _options.CosmosDatabaseId,
             _options.CosmosContainerId);
 
-        var containerResponse = await database.CreateContainerIfNotExistsAsync(
-            id: _options.CosmosContainerId,
-            partitionKeyPath: "/uploadedByUserId",
-            cancellationToken: cancellationToken);
-
-        await containerResponse.Container.UpsertItemAsync(
+        var container = await GetContainerAsync(cancellationToken);
+        await container.UpsertItemAsync(
             item: document,
             partitionKey: new PartitionKey(document.UploadedByUserId),
             cancellationToken: cancellationToken);
@@ -66,7 +67,7 @@ public sealed class SettlementHistoryCosmosRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uploadedByUserId);
 
-        var container = await GetOrCreateContainerAsync(cancellationToken);
+        var container = await GetContainerAsync(cancellationToken);
         var safeTake = Math.Clamp(take, 1, 100);
         var query = new QueryDefinition(
             $"SELECT TOP {safeTake} * FROM c WHERE c.uploadedByUserId = @userId ORDER BY c.confirmedAtUtc DESC")
@@ -105,7 +106,22 @@ public sealed class SettlementHistoryCosmosRepository
         return histories[index - 1];
     }
 
-    private async Task<Container> GetOrCreateContainerAsync(CancellationToken cancellationToken)
+    private async Task<Container> GetContainerAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken == CancellationToken.None)
+        {
+            return await _containerTask.Value;
+        }
+
+        if (_containerTask.IsValueCreated)
+        {
+            return await _containerTask.Value.WaitAsync(cancellationToken);
+        }
+
+        return await InitializeContainerAsync(cancellationToken);
+    }
+
+    private async Task<Container> InitializeContainerAsync(CancellationToken cancellationToken)
     {
         var database = _cosmosClient.GetDatabase(_options.CosmosDatabaseId);
         var containerResponse = await database.CreateContainerIfNotExistsAsync(

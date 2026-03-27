@@ -26,37 +26,6 @@ public sealed class ReceiptDraftSessionService
         _logger = logger;
     }
 
-    public async Task CreatePendingUploadSessionAsync(
-        string? blobUrl,
-        string uploadedByUserId,
-        string uploadedByDisplayName,
-        string? paymentContact,
-        IMessageChannel targetChannel,
-        CancellationToken cancellationToken)
-    {
-        var tempReceiptId = $"pending-{Guid.NewGuid():N}";
-        await _lockManager.ExecuteAsync(tempReceiptId, async () =>
-        {
-            var session = ReceiptSessionStateService.CreatePendingUploadSession(
-                tempReceiptId,
-                blobUrl,
-                uploadedByUserId,
-                uploadedByDisplayName,
-                paymentContact);
-
-            session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
-
-            await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
-
-            _logger.LogInformation(
-                "Pending receipt session created. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId}",
-                session.ReceiptId,
-                uploadedByUserId,
-                session.MainChannelId,
-                session.MainMessageId);
-        }, cancellationToken);
-    }
-
     public async Task<ReceiptSessionState> CreatePendingUploadSessionAndReturnAsync(
         string uploadedByUserId,
         string uploadedByDisplayName,

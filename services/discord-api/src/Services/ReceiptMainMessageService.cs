@@ -39,10 +39,11 @@ public sealed class ReceiptMainMessageService
 
     public async Task SendToSlashCommandAsync(ReceiptSessionState session, SocketSlashCommand command)
     {
+        var renderedMessage = ReceiptMessageRenderer.RenderReceiptMessage(session);
         var sentMessage = await ExecuteDiscordRetryAsync(
             operationName: "send_main_message_to_slash_followup",
             operation: () => command.FollowupAsync(
-                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
+                embed: renderedMessage.Embed,
                 components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
                 ephemeral: false));
 
@@ -122,40 +123,6 @@ public sealed class ReceiptMainMessageService
             cancellationToken);
     }
 
-    public async Task PublishForComponentAsync(ReceiptSessionState session, SocketMessageComponent component)
-    {
-        var replacement = await ExecuteDiscordRetryAsync(
-            operationName: "publish_main_message_for_component",
-            operation: () => component.FollowupAsync(
-                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
-                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-                ephemeral: false));
-
-        ApplyPublishedMessageMetadata(
-            session,
-            replacement,
-            replacement.Channel as IMessageChannel ?? ResolveInteractionChannel(component) ?? session.MainChannel);
-
-        _sessionStore.AddOrUpdate(session);
-    }
-
-    public async Task PublishForModalAsync(ReceiptSessionState session, SocketModal modal)
-    {
-        var replacement = await ExecuteDiscordRetryAsync(
-            operationName: "publish_main_message_for_modal",
-            operation: () => modal.FollowupAsync(
-                embed: ReceiptMessageRenderer.RenderReceiptMessage(session).Embed,
-                components: ReceiptInteractionCustomIds.BuildMainMessageComponents(session),
-                ephemeral: false));
-
-        ApplyPublishedMessageMetadata(
-            session,
-            replacement,
-            replacement.Channel as IMessageChannel ?? ResolveInteractionChannel(modal) ?? session.MainChannel);
-
-        _sessionStore.AddOrUpdate(session);
-    }
-
     public IMessageChannel? ResolveSlashCommandChannel(SocketSlashCommand command)
     {
         if (command.Channel is IMessageChannel directChannel)
@@ -170,17 +137,6 @@ public sealed class ReceiptMainMessageService
         }
 
         return null;
-    }
-
-    public static IMessageChannel? ResolveInteractionChannel(SocketMessageComponent component)
-    {
-        return component.Channel as IMessageChannel
-            ?? component.Message.Channel as IMessageChannel;
-    }
-
-    public static IMessageChannel? ResolveInteractionChannel(SocketModal modal)
-    {
-        return modal.Channel as IMessageChannel;
     }
 
     private void ApplyPublishedMessageMetadata(

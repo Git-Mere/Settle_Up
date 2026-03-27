@@ -33,4 +33,6 @@ public sealed class ReceiptSessionState
     public DateTimeOffset CreatedAtUtc { get; init; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
     public int PageSize { get; init; } = 20;
+    public RenderedReceiptMessage? CachedRenderedMessage { get; set; }
+    public DateTimeOffset? CachedRenderedAtUtc { get; set; }
 }
