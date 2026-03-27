@@ -14,11 +14,13 @@ sealed class DiscordBotWorker : IHostedService
     private readonly SettleUpCommandHandler _settleUpHandler;
     private readonly string? _token;
     private readonly string? _guildId;
+    private readonly bool _enableDebugCommands;
     private bool _commandRegistered;
 
     public DiscordBotWorker(
         DiscordSocketClient client,
         ILogger<DiscordBotWorker> logger,
+        IHostEnvironment hostEnvironment,
         PingTestCommandHandler pingTestHandler,
         TestReceiptCommandHandler testReceiptHandler,
         HistoryCommandHandler historyHandler,
@@ -34,6 +36,7 @@ sealed class DiscordBotWorker : IHostedService
         _receiptInteractionService = receiptInteractionService;
         _token = Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
         _guildId = Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
+        _enableDebugCommands = hostEnvironment.IsDevelopment();
 
         _client.Log += HandleDiscordLogAsync;
         _client.Ready += HandleReadyAsync;
@@ -96,32 +99,43 @@ sealed class DiscordBotWorker : IHostedService
             return;
         }
 
-        var commands = new[]
+        var commands = new List<ApplicationCommandProperties>
         {
             SettleUpCommandHandler.BuildCommand(),
-            PingTestCommandHandler.BuildCommand(),
-            TestReceiptCommandHandler.BuildCommand(),
             HistoryCommandHandler.BuildCommand()
         };
 
+        if (_enableDebugCommands)
+        {
+            commands.Add(PingTestCommandHandler.BuildCommand());
+            commands.Add(TestReceiptCommandHandler.BuildCommand());
+        }
+
         if (ulong.TryParse(_guildId, out var guildId))
         {
-            await _client.Rest.BulkOverwriteGuildCommands(commands, guildId);
+            await _client.Rest.BulkOverwriteGuildCommands([.. commands], guildId);
 
             activity?.SetTag("discord.commands.scope", "guild");
             activity?.SetTag("discord.commands.guild_id", guildId.ToString());
-            _logger.LogInformation("Discord ready; registered {CommandCount} guild commands. GuildId={GuildId}", commands.Length, guildId);
+            _logger.LogInformation(
+                "Discord ready; registered {CommandCount} guild commands. GuildId={GuildId} DebugCommandsEnabled={DebugCommandsEnabled}",
+                commands.Count,
+                guildId,
+                _enableDebugCommands);
         }
         else
         {
-            await _client.Rest.BulkOverwriteGlobalCommands(commands);
+            await _client.Rest.BulkOverwriteGlobalCommands([.. commands]);
 
             activity?.SetTag("discord.commands.scope", "global");
-            _logger.LogInformation("Discord ready; registered {CommandCount} global commands.", commands.Length);
+            _logger.LogInformation(
+                "Discord ready; registered {CommandCount} global commands. DebugCommandsEnabled={DebugCommandsEnabled}",
+                commands.Count,
+                _enableDebugCommands);
         }
 
         _commandRegistered = true;
-        activity?.SetTag("discord.commands.registered", commands.Length);
+        activity?.SetTag("discord.commands.registered", commands.Count);
     }
 
     private async Task HandleSlashCommandExecutedAsync(SocketSlashCommand command)
@@ -145,11 +159,13 @@ sealed class DiscordBotWorker : IHostedService
             {
                 status = await _settleUpHandler.HandleSlashCommandAsync(command);
             }
-            else if (string.Equals(command.Data.Name, PingTestCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            else if (_enableDebugCommands &&
+                     string.Equals(command.Data.Name, PingTestCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _pingTestHandler.HandleSlashCommandAsync(command);
             }
-            else if (string.Equals(command.Data.Name, TestReceiptCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            else if (_enableDebugCommands &&
+                     string.Equals(command.Data.Name, TestReceiptCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _testReceiptHandler.HandleSlashCommandAsync(command);
             }
