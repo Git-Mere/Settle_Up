@@ -7,6 +7,7 @@ using receipt_parser.Services;
 using SettleUp.Observability;
 
 LoadDotEnvIfExists();
+ApplyEnvironmentAliases();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddSettleUpLogging(builder.Configuration);
@@ -73,4 +74,31 @@ static void LoadDotEnvIfExists()
         Env.Load(path);
         break;
     }
+}
+
+static void ApplyEnvironmentAliases()
+{
+    CopyEnvironmentVariableIfMissing(
+        targetName: "ReceiptParser__DocumentIntelligenceApiKey",
+        sourceName: "ReceiptParser-DocumentIntelligenceApiKey");
+
+    CopyEnvironmentVariableIfMissing(
+        targetName: "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        sourceName: "applicationinsights-connection-string");
+}
+
+static void CopyEnvironmentVariableIfMissing(string targetName, string sourceName)
+{
+    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(targetName)))
+    {
+        return;
+    }
+
+    var sourceValue = Environment.GetEnvironmentVariable(sourceName);
+    if (string.IsNullOrWhiteSpace(sourceValue))
+    {
+        return;
+    }
+
+    Environment.SetEnvironmentVariable(targetName, sourceValue);
 }
