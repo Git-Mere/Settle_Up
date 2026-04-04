@@ -156,13 +156,14 @@ public static class ReceiptMessageRenderer
                 entry.Item.GroupDisplayName,
                 string.Join('|', entry.Users),
                 entry.Item.Amount,
+                entry.Item.DiscountAmount,
                 entry.Item.IsAlcohol));
 
         var lines = groups
             .Select(group =>
             {
                 var users = group.First().Users.Select(renderContext.ResolveUserDisplayName);
-                return $"• {FormatItemName(group.Key.Name, group.Key.IsAlcohol)} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)} | {string.Join(", ", users)}";
+                return $"• {FormatItemSummary(group.Key.Name, group.Key.IsAlcohol, group.Key.Amount * group.Count(), group.Key.DiscountAmount * group.Count(), session.Currency)} | {string.Join(", ", users)}";
             })
             .ToArray();
 
@@ -197,9 +198,9 @@ public static class ReceiptMessageRenderer
 
             foreach (var itemGroup in userGroup.Items
                          .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol)))
+                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol)))
             {
-                sections.Add($"• {FormatItemName(itemGroup.Key.Name, itemGroup.Key.IsAlcohol)} x{itemGroup.Count()} - {FormatMoney(itemGroup.Key.Amount * itemGroup.Count(), session.Currency)}");
+                sections.Add($"• {FormatItemSummary(itemGroup.Key.Name, itemGroup.Key.IsAlcohol, itemGroup.Key.Amount * itemGroup.Count(), itemGroup.Key.DiscountAmount * itemGroup.Count(), session.Currency)}");
             }
 
             sections.Add(string.Empty);
@@ -216,8 +217,8 @@ public static class ReceiptMessageRenderer
     private static string BuildUnassignedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
         var groups = renderContext.UnassignedItems
-            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol))
-            .Select(group => $"• {FormatItemName(group.Key.Name, group.Key.IsAlcohol)} x{group.Count()} - {FormatMoney(group.Key.Amount * group.Count(), session.Currency)}")
+            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol))
+            .Select(group => $"• {FormatItemSummary(group.Key.Name, group.Key.IsAlcohol, group.Key.Amount * group.Count(), group.Key.DiscountAmount * group.Count(), session.Currency)}")
             .ToArray();
 
         return groups.Length == 0 ? "• None" : string.Join('\n', groups);
@@ -299,8 +300,13 @@ public static class ReceiptMessageRenderer
             var itemSummary = string.Join(
                 ", ",
                 userItems
-                    .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol))
-                    .Select(itemGroup => $"{FormatItemName(itemGroup.Key.Name, itemGroup.Key.IsAlcohol)} x{itemGroup.Count()}"));
+                    .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol))
+                    .Select(itemGroup => FormatItemSummary(
+                        itemGroup.Key.Name,
+                        itemGroup.Key.IsAlcohol,
+                        itemGroup.Key.Amount * itemGroup.Count(),
+                        itemGroup.Key.DiscountAmount * itemGroup.Count(),
+                        session.Currency)));
 
             sections.Add($"Items: {itemSummary}");
 
@@ -320,6 +326,17 @@ public static class ReceiptMessageRenderer
         return isAlcohol ? $"{name} 🥃" : name;
     }
 
+    private static string FormatItemSummary(string name, bool isAlcohol, decimal amount, decimal discountAmount, string? currency)
+    {
+        var baseText = $"{FormatItemName(name, isAlcohol)} - {FormatMoney(amount, currency)}";
+        if (discountAmount <= 0m)
+        {
+            return baseText;
+        }
+
+        return $"{baseText} (discount -{FormatMoney(discountAmount, currency)})";
+    }
+
     private static string FormatMoney(decimal amount, string? currency)
     {
         return string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(currency)
@@ -332,9 +349,9 @@ public static class ReceiptMessageRenderer
         builder.AddField("\u200B", "\u200B", inline: true);
     }
 
-    private sealed record SharedGroupingKey(string GroupKey, string Name, string UsersKey, decimal Amount, bool IsAlcohol);
+    private sealed record SharedGroupingKey(string GroupKey, string Name, string UsersKey, decimal Amount, decimal DiscountAmount, bool IsAlcohol);
 
-    private sealed record ItemGroupingKey(string GroupKey, string Name, decimal Amount, bool IsAlcohol);
+    private sealed record ItemGroupingKey(string GroupKey, string Name, decimal Amount, decimal DiscountAmount, bool IsAlcohol);
 
     private sealed class ReceiptRenderContext
     {

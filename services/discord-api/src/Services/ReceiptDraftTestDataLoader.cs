@@ -66,6 +66,8 @@ public sealed class ReceiptDraftTestDataLoader
         return scenario switch
         {
             ReceiptDraftTestScenario.GeneralMarket => "sample-receipt-draft-general-market.json",
+            ReceiptDraftTestScenario.DiscountMarket => "sample-receipt-draft-discount-market.json",
+            ReceiptDraftTestScenario.StackedDiscountMarket => "sample-receipt-draft-stacked-discount-market.json",
             ReceiptDraftTestScenario.LiquorTaxMarket => "sample-receipt-draft-liquor-tax-market.json",
             ReceiptDraftTestScenario.RestaurantTip => "sample-receipt-draft-restaurant-tip.json",
             _ => "sample-receipt-draft-general-market.json"
@@ -76,6 +78,8 @@ public sealed class ReceiptDraftTestDataLoader
 public static class ReceiptDraftTestScenario
 {
     public const string GeneralMarket = "general-market";
+    public const string DiscountMarket = "discount-market";
+    public const string StackedDiscountMarket = "stacked-discount-market";
     public const string LiquorTaxMarket = "liquor-tax-market";
     public const string RestaurantTip = "restaurant-tip";
 }

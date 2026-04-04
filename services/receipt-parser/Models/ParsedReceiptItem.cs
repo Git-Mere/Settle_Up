@@ -5,4 +5,7 @@ public sealed record ParsedReceiptItem(
     string? Description,
     decimal? Quantity,
     decimal? UnitPrice,
-    decimal? TotalPrice);
+    decimal? TotalPrice,
+    decimal? OriginalUnitPrice = null,
+    decimal? OriginalTotalPrice = null,
+    decimal? DiscountAmount = null);

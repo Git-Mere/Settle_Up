@@ -1,0 +1,41 @@
+{
+  "id": "test-receipt-ui-001",
+  "draftId": "test-receipt-ui-001",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/2026/04/04/test-user/test-receipt-ui-001-stacked.jpg",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Costco",
+  "transactionDate": "2026-04-04",
+  "currency": "USD",
+  "subtotal": 15.00,
+  "tax": 1.20,
+  "tip": 0.00,
+  "unattributedDiscount": 0.00,
+  "total": 16.20,
+  "items": [
+    {
+      "id": "item-01",
+      "description": "Granola Box",
+      "quantity": 1,
+      "unitPrice": 7.00,
+      "totalPrice": 7.00,
+      "originalUnitPrice": 10.00,
+      "originalTotalPrice": 10.00,
+      "discountAmount": 3.00
+    },
+    {
+      "id": "item-02",
+      "description": "Greek Yogurt",
+      "quantity": 1,
+      "unitPrice": 8.00,
+      "totalPrice": 8.00
+    }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.98,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-04-04T18:10:00Z",
+  "updatedAtUtc": "2026-04-04T18:10:00Z"
+}

@@ -19,6 +19,7 @@ public sealed class ReceiptDocument
     public decimal? Sst { get; init; }
     public decimal? Slt { get; init; }
     public decimal? Tip { get; init; }
+    public decimal? UnattributedDiscount { get; init; }
     public decimal? Total { get; init; }
     public List<ParsedReceiptItem> Items { get; init; } = [];
     public ParseMetadata ParseMetadata { get; init; } = new("prebuilt-receipt", null, null);

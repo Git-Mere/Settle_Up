@@ -1,0 +1,48 @@
+{
+  "id": "test-receipt-ui-001",
+  "draftId": "test-receipt-ui-001",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/2026/04/04/test-user/test-receipt-ui-001.jpg",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Target",
+  "transactionDate": "2026-04-04",
+  "currency": "USD",
+  "subtotal": 10.50,
+  "tax": 0.84,
+  "tip": 0.00,
+  "unattributedDiscount": 0.00,
+  "total": 11.34,
+  "items": [
+    {
+      "id": "item-01",
+      "description": "Protein Bar",
+      "quantity": 1,
+      "unitPrice": 3.50,
+      "totalPrice": 3.50,
+      "originalUnitPrice": 4.50,
+      "originalTotalPrice": 4.50,
+      "discountAmount": 1.00
+    },
+    {
+      "id": "item-02",
+      "description": "Sparkling Water",
+      "quantity": 1,
+      "unitPrice": 2.50,
+      "totalPrice": 2.50
+    },
+    {
+      "id": "item-03",
+      "description": "Sandwich",
+      "quantity": 1,
+      "unitPrice": 4.50,
+      "totalPrice": 4.50
+    }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.98,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-04-04T18:00:00Z",
+  "updatedAtUtc": "2026-04-04T18:00:00Z"
+}

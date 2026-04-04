@@ -99,7 +99,13 @@ public sealed class DocumentIntelligenceReceiptParser
         var tip = TryParseDecimal(tipField);
         var total = TryParseDecimal(totalField);
         var transactionDate = TryParseDate(dateField?.Content);
-        var items = ExtractItems(analyzedDocument);
+        var itemExtraction = ExtractItems(analyzedDocument);
+        var normalizedSubtotal = itemExtraction.Items.Count > 0
+            ? decimal.Round(
+                itemExtraction.Items.Sum(item => item.TotalPrice ?? item.UnitPrice ?? 0m),
+                2,
+                MidpointRounding.AwayFromZero)
+            : subtotal;
         var currency = TryParseCurrencyCode(totalField);
 
         var receiptId = Guid.NewGuid().ToString("N");
@@ -116,17 +122,18 @@ public sealed class DocumentIntelligenceReceiptParser
             MerchantName: merchantName,
             Currency: currency,
             TransactionDate: transactionDate,
-            Subtotal: subtotal,
+            Subtotal: normalizedSubtotal,
             Tax: taxBreakdown.GeneralTax,
             Sst: taxBreakdown.Sst,
             Slt: taxBreakdown.Slt,
             Tip: tip,
+            UnattributedDiscount: itemExtraction.UnattributedDiscount,
             Total: total,
             ParseMetadata: new ParseMetadata(
                 ModelId: _options.ModelId,
                 MerchantConfidence: merchantField?.Confidence,
                 TotalConfidence: totalField?.Confidence),
-            Items: items);
+            Items: itemExtraction.Items);
     }
 
     private static TaxBreakdown ExtractTaxBreakdown(AnalyzedDocument? document, decimal? totalTax)
@@ -287,15 +294,15 @@ public sealed class DocumentIntelligenceReceiptParser
         return null;
     }
 
-    private static IReadOnlyList<ParsedReceiptItem> ExtractItems(AnalyzedDocument? document)
+    private static ItemExtractionResult ExtractItems(AnalyzedDocument? document)
     {
         var itemsField = TryGetField(document, "Items");
         if (itemsField?.ValueList is null)
         {
-            return [];
+            return new ItemExtractionResult([], null);
         }
 
-        var items = new List<ParsedReceiptItem>();
+        var rawItems = new List<ParsedReceiptItem>();
         for (var index = 0; index < itemsField.ValueList.Count; index++)
         {
             var itemField = itemsField.ValueList[index];
@@ -316,13 +323,131 @@ public sealed class DocumentIntelligenceReceiptParser
                 UnitPrice: TryParseDecimal(unitPriceField),
                 TotalPrice: TryParseDecimal(totalPriceField));
 
-            items.Add(item);
+            rawItems.Add(item);
         }
 
-        return items;
+        return NormalizeItems(rawItems);
+    }
+
+    private static ItemExtractionResult NormalizeItems(IReadOnlyList<ParsedReceiptItem> rawItems)
+    {
+        if (rawItems.Count == 0)
+        {
+            return new ItemExtractionResult([], null);
+        }
+
+        var normalizedItems = new List<ParsedReceiptItem>();
+
+        foreach (var rawItem in rawItems)
+        {
+            if (!TryResolveDiscountAmount(rawItem, out var discountAmount))
+            {
+                normalizedItems.Add(rawItem);
+                continue;
+            }
+
+            if (normalizedItems.Count == 0)
+            {
+                continue;
+            }
+
+            var previousItem = normalizedItems[^1];
+            var adjustedItem = TryApplyDiscount(previousItem, discountAmount);
+            if (adjustedItem is null)
+            {
+                continue;
+            }
+
+            normalizedItems[^1] = adjustedItem;
+        }
+
+        return new ItemExtractionResult(normalizedItems, null);
+    }
+
+    private static bool TryResolveDiscountAmount(ParsedReceiptItem item, out decimal discountAmount)
+    {
+        discountAmount = 0m;
+
+        var totalPrice = item.TotalPrice;
+        var unitPrice = item.UnitPrice;
+        var quantity = item.Quantity;
+        var description = item.Description?.Trim();
+
+        if (totalPrice is decimal negativeTotal && negativeTotal < 0m)
+        {
+            discountAmount = decimal.Abs(negativeTotal);
+            return true;
+        }
+
+        if (unitPrice is decimal negativeUnit && negativeUnit < 0m)
+        {
+            var multiplier = quantity is decimal q && q > 0m ? q : 1m;
+            discountAmount = decimal.Abs(negativeUnit * multiplier);
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(description) &&
+            LooksLikeDiscountDescription(description) &&
+            ((totalPrice is decimal zeroTotal && zeroTotal == 0m) ||
+             (unitPrice is decimal zeroUnit && zeroUnit == 0m)))
+        {
+            discountAmount = 0m;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeDiscountDescription(string description)
+    {
+        var normalized = description.Trim().ToLowerInvariant();
+        return normalized.Contains("discount", StringComparison.Ordinal) ||
+               normalized.Contains("coupon", StringComparison.Ordinal) ||
+               normalized.Contains("promo", StringComparison.Ordinal) ||
+               normalized.Contains("saving", StringComparison.Ordinal) ||
+               normalized.Contains("rebate", StringComparison.Ordinal) ||
+               normalized.Contains("off ", StringComparison.Ordinal) ||
+               normalized.EndsWith(" off", StringComparison.Ordinal);
+    }
+
+    private static ParsedReceiptItem? TryApplyDiscount(ParsedReceiptItem item, decimal discountAmount)
+    {
+        if (discountAmount <= 0m)
+        {
+            return item;
+        }
+
+        var quantity = item.Quantity is decimal rawQuantity && rawQuantity > 0m ? rawQuantity : 1m;
+        var originalTotal = item.OriginalTotalPrice ?? item.TotalPrice ?? item.UnitPrice;
+        if (originalTotal is null || originalTotal <= 0m)
+        {
+            return null;
+        }
+
+        var originalUnit = item.OriginalUnitPrice ?? item.UnitPrice ?? decimal.Round(originalTotal.Value / quantity, 2, MidpointRounding.AwayFromZero);
+        var adjustedTotal = decimal.Round(originalTotal.Value - discountAmount, 2, MidpointRounding.AwayFromZero);
+        if (adjustedTotal < 0m)
+        {
+            return null;
+        }
+
+        var adjustedUnit = quantity > 0m
+            ? decimal.Round(adjustedTotal / quantity, 2, MidpointRounding.AwayFromZero)
+            : adjustedTotal;
+        var accumulatedDiscount = (item.DiscountAmount ?? 0m) + discountAmount;
+
+        return item with
+        {
+            UnitPrice = adjustedUnit,
+            TotalPrice = adjustedTotal,
+            OriginalUnitPrice = originalUnit,
+            OriginalTotalPrice = originalTotal.Value,
+            DiscountAmount = decimal.Round(accumulatedDiscount, 2, MidpointRounding.AwayFromZero)
+        };
     }
 
     private sealed record TaxBreakdown(decimal? GeneralTax, decimal? Sst, decimal? Slt);
+    private sealed record ItemExtractionResult(IReadOnlyList<ParsedReceiptItem> Items, decimal? UnattributedDiscount);
 
     private enum TaxKind
     {

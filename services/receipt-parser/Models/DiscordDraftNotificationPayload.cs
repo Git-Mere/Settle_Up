@@ -13,6 +13,7 @@ public sealed record DiscordDraftNotificationPayload(
     decimal? Sst,
     decimal? Slt,
     decimal? Tip,
+    decimal? UnattributedDiscount,
     decimal? Total,
     IReadOnlyList<ParsedReceiptItem> Items,
     ParseMetadata ParseMetadata,

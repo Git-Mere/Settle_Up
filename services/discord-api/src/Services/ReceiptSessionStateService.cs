@@ -47,6 +47,7 @@ public static class ReceiptSessionStateService
             Sst = payload.Sst,
             Slt = payload.Slt,
             Tip = payload.Tip,
+            UnattributedDiscount = payload.UnattributedDiscount,
             Total = payload.Total,
             Items = ExpandItems(payload.Items).ToList(),
             IsDraftReady = true,
@@ -75,6 +76,7 @@ public static class ReceiptSessionStateService
         session.Sst = payload.Sst;
         session.Slt = payload.Slt;
         session.Tip = payload.Tip;
+        session.UnattributedDiscount = payload.UnattributedDiscount;
         session.Total = payload.Total;
         session.Items = ExpandItems(payload.Items).ToList();
         session.IsDraftReady = true;
@@ -100,6 +102,8 @@ public static class ReceiptSessionStateService
             var groupKey = string.IsNullOrWhiteSpace(normalizedName) ? $"item-{index + 1}" : normalizedName;
             var quantity = ResolveExpansionCount(item.Quantity);
             var amountPerUnit = ResolveAmountPerUnit(item, quantity);
+            var originalAmountPerUnit = ResolveOriginalAmountPerUnit(item, quantity);
+            var discountAmountPerUnit = ResolveDiscountAmountPerUnit(item, quantity);
 
             for (var unitIndex = 0; unitIndex < quantity; unitIndex++)
             {
@@ -109,6 +113,8 @@ public static class ReceiptSessionStateService
                     Name = name,
                     NormalizedName = normalizedName,
                     Amount = amountPerUnit,
+                    OriginalAmount = originalAmountPerUnit,
+                    DiscountAmount = discountAmountPerUnit,
                     GroupKey = groupKey,
                     GroupDisplayName = name
                 });
@@ -226,6 +232,8 @@ public static class ReceiptSessionStateService
                 Name = name,
                 NormalizedName = normalizedName,
                 Amount = amount,
+                OriginalAmount = amount,
+                DiscountAmount = 0m,
                 GroupKey = groupKey,
                 GroupDisplayName = name,
                 IsManuallyAdded = true
@@ -258,6 +266,8 @@ public static class ReceiptSessionStateService
         item.Name = newName;
         item.NormalizedName = normalizedName;
         item.Amount = newAmount;
+        item.OriginalAmount = newAmount;
+        item.DiscountAmount = 0m;
         item.GroupDisplayName = newName;
         item.GroupKey = string.IsNullOrWhiteSpace(normalizedName)
             ? item.Id
@@ -418,6 +428,41 @@ public static class ReceiptSessionStateService
         }
 
         return 0m;
+    }
+
+    private static decimal ResolveOriginalAmountPerUnit(ReceiptDraftNotificationItem item, int quantity)
+    {
+        if (quantity <= 1)
+        {
+            return item.OriginalTotalPrice ?? item.TotalPrice ?? item.OriginalUnitPrice ?? item.UnitPrice ?? 0m;
+        }
+
+        if (item.OriginalUnitPrice is decimal originalUnitPrice && originalUnitPrice > 0m)
+        {
+            return originalUnitPrice;
+        }
+
+        if (item.OriginalTotalPrice is decimal originalTotalPrice && originalTotalPrice > 0m)
+        {
+            return decimal.Round(originalTotalPrice / quantity, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return ResolveAmountPerUnit(item, quantity);
+    }
+
+    private static decimal ResolveDiscountAmountPerUnit(ReceiptDraftNotificationItem item, int quantity)
+    {
+        if (item.DiscountAmount is not decimal discountAmount || discountAmount <= 0m)
+        {
+            return 0m;
+        }
+
+        if (quantity <= 1)
+        {
+            return discountAmount;
+        }
+
+        return decimal.Round(discountAmount / quantity, 2, MidpointRounding.AwayFromZero);
     }
 
     private static int ResolveExpansionCount(decimal? quantity)

@@ -11,6 +11,7 @@ public sealed record ParsedReceiptResult(
     decimal? Sst,
     decimal? Slt,
     decimal? Tip,
+    decimal? UnattributedDiscount,
     decimal? Total,
     ParseMetadata ParseMetadata,
     IReadOnlyList<ParsedReceiptItem> Items);

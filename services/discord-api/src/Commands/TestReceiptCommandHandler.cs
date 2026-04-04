@@ -32,6 +32,8 @@ sealed class TestReceiptCommandHandler
                 .WithRequired(true)
                 .WithType(ApplicationCommandOptionType.String)
                 .AddChoice("General Market", ReceiptDraftTestScenario.GeneralMarket)
+                .AddChoice("Discount Market", ReceiptDraftTestScenario.DiscountMarket)
+                .AddChoice("Stacked Discount Market", ReceiptDraftTestScenario.StackedDiscountMarket)
                 .AddChoice("Liquor Tax Market", ReceiptDraftTestScenario.LiquorTaxMarket)
                 .AddChoice("Restaurant Tip", ReceiptDraftTestScenario.RestaurantTip))
             .Build();

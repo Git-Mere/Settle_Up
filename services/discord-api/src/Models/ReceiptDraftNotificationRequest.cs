@@ -19,6 +19,7 @@ public sealed class ReceiptDraftNotificationRequest
     public decimal? Sst { get; init; }
     public decimal? Slt { get; init; }
     public decimal? Tip { get; init; }
+    public decimal? UnattributedDiscount { get; init; }
     public decimal? Total { get; init; }
     public IReadOnlyList<ReceiptDraftNotificationItem>? Items { get; init; }
     public ReceiptDraftParseMetadata? ParseMetadata { get; init; }
@@ -34,7 +35,10 @@ public sealed record ReceiptDraftNotificationItem(
     string? Description,
     decimal? Quantity,
     decimal? UnitPrice,
-    decimal? TotalPrice);
+    decimal? TotalPrice,
+    decimal? OriginalUnitPrice = null,
+    decimal? OriginalTotalPrice = null,
+    decimal? DiscountAmount = null);
 
 public sealed record ReceiptDraftParseMetadata(
     string ModelId,

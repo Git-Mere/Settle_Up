@@ -15,6 +15,7 @@ public sealed class ReceiptSessionState
     public decimal? Sst { get; set; }
     public decimal? Slt { get; set; }
     public decimal? Tip { get; set; }
+    public decimal? UnattributedDiscount { get; set; }
     public TipSplitMode TipSplitMode { get; set; } = TipSplitMode.Proportional;
     public decimal? Total { get; set; }
     public List<ReceiptLineItemState> Items { get; set; } = [];
