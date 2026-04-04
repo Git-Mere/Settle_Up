@@ -64,6 +64,8 @@ public static class ReceiptSessionStateService
         ArgumentNullException.ThrowIfNull(payload);
 
         var now = createdAtUtc ?? DateTimeOffset.UtcNow;
+        var normalizedCurrency = NormalizeOptionalText(payload.Currency);
+        var normalizedTax = NormalizeGeneralTax(normalizedCurrency, payload.Tax);
         return new ReceiptSessionState
         {
             ReceiptId = payload.ResolvedDraftId ?? throw new InvalidOperationException("draftId is required."),
@@ -73,9 +75,9 @@ public static class ReceiptSessionStateService
             UploadedByDisplayName = uploadedByDisplayName,
             PaymentContact = NormalizeOptionalText(paymentContact),
             TransactionDate = payload.TransactionDate,
-            Currency = NormalizeOptionalText(payload.Currency),
+            Currency = normalizedCurrency,
             Subtotal = payload.Subtotal,
-            Tax = payload.Tax,
+            Tax = normalizedTax,
             Sst = payload.Sst,
             Slt = payload.Slt,
             Tip = payload.Tip,
@@ -96,15 +98,17 @@ public static class ReceiptSessionStateService
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(payload);
 
+        var normalizedCurrency = NormalizeOptionalText(payload.Currency);
+        var normalizedTax = NormalizeGeneralTax(normalizedCurrency, payload.Tax);
         session.ReceiptId = payload.ResolvedDraftId ?? session.ReceiptId;
         session.BlobUrl = payload.BlobUrl ?? session.BlobUrl;
         session.MerchantName = NormalizeOptionalText(payload.MerchantName);
         session.UploadedByUserId = payload.UploadedByUserId ?? session.UploadedByUserId;
         session.UploadedByDisplayName = uploadedByDisplayName;
         session.TransactionDate = payload.TransactionDate;
-        session.Currency = NormalizeOptionalText(payload.Currency);
+        session.Currency = normalizedCurrency;
         session.Subtotal = payload.Subtotal;
-        session.Tax = payload.Tax;
+        session.Tax = normalizedTax;
         session.Sst = payload.Sst;
         session.Slt = payload.Slt;
         session.Tip = payload.Tip;
@@ -527,6 +531,16 @@ public static class ReceiptSessionStateService
     private static string? NormalizeOptionalText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static decimal? NormalizeGeneralTax(string? currency, decimal? tax)
+    {
+        if (string.Equals(currency, "KRW", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0m;
+        }
+
+        return tax;
     }
 
     private static bool HasItem(ReceiptSessionState session, string itemId)

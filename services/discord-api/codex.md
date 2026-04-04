@@ -126,6 +126,13 @@
 - 공개 check 메시지를 바로 띄운 뒤 owner가 `Add item` 등 기존 조작 UI로 채워 넣는다.
 - item이 0개인 상태에서는 confirm이 불가능하고, item이 1개 이상이며 모두 배정됐을 때만 confirm 가능하다.
 
+19. KRW 영수증 일반 tax 포함세 처리
+- `Currency == KRW`인 draft는 일반 `Tax`를 포함세로 보고 `0`으로 정규화한다.
+- 그래서 한국 영수증은 일반 tax가 item 금액 위에 한 번 더 붙지 않는다.
+- tax 값이 `0`이 되므로 check/confirmed UI의 일반 tax header와 tax 섹션도 함께 표시되지 않는다.
+- 현재 이 정책은 일반 tax에만 적용하고, `Tip`, `SST`, `SLT`는 그대로 둔다.
+- 관련 결정은 `docs/decisions/022-treat-general-tax-on-krw-receipts-as-tax-included.md`를 따른다.
+
 ## Current File Layout (relevant)
 ```text
 services/discord-api/
@@ -256,6 +263,7 @@ services/discord-api/
 - language command는 구현됐고, 현재 공개 메시지는 owner 언어 기준, private/ephemeral/history는 사용자 언어 기준으로 동작한다.
 - 공개 Discord 메시지는 사용자별로 다른 disabled 상태나 다른 언어를 줄 수 없다는 제약이 여전히 있다.
 - `/custom`은 parser 없이 빈 정산 세션을 여는 진입점으로 추가됐다.
+- `KRW` 영수증은 현재 일반 tax를 포함세로 보고 계산/표시에서 제외한다.
 - 그 다음 축은 계속 리팩터링과 callback 검증 강화다.
 - shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
 
@@ -281,6 +289,10 @@ services/discord-api/
 - `/language`는 구현 완료됐다.
 - 사용자 설정은 메모리 기반이라 재시작 시 초기화된다.
 - slash command 메타데이터는 사용자별 현지화를 하지 않고 쉬운 영어로 유지한다.
+
+6. KRW tax treatment
+- 현재 한국 영수증은 `Currency == KRW`이면 일반 `Tax`를 포함세로 보고 `0`으로 정규화한다.
+- 장기적으로 더 정교한 정책이 필요하면 parser payload에 `CountryRegion` 또는 `TaxTreatment`를 추가하는 쪽이 낫다.
 
 ## Next Codex Session Quick Start
 1. `/getting_draft` 인증/검증 규칙 추가

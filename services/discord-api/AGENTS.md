@@ -92,3 +92,4 @@ If the service structure changes significantly, update:
 - 사용자 언어 설정은 메모리 기반이라 봇 재시작 시 초기화된다. slash command 설명과 옵션 설명은 쉬운 영어로 유지한다.
 - item-level discount가 들어갔고, 할인은 우선 직전 일반 item에 귀속한다. 귀속 실패 할인은 자동 적용하지 않고 필요 시 owner가 `Edit item`으로 수동 수정한다.
 - `/custom`이 추가돼 parser 없이 빈 receipt check 메시지를 바로 시작할 수 있다. `payment_contact`는 optional slash option이고, item이 1개 이상이며 모두 배정됐을 때만 confirm 가능하다.
+- `Currency == KRW`인 draft는 일반 `Tax`를 포함세로 보고 `0`으로 정규화한다. 그래서 한국 영수증은 일반 tax header/section이 보이지 않고 정산에도 한 번 더 붙지 않는다.

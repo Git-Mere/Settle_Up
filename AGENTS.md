@@ -100,5 +100,6 @@ If making changes:
 - 사용자 언어 설정은 메모리 기반이고 기본 언어는 English다. slash command 메타데이터와 로그/exception은 영어로 유지한다.
 - `discord-api`는 item-level discount를 지원한다. 할인 line은 우선 직전 일반 item에 귀속되고, 귀속 실패 할인은 자동 적용하지 않는다.
 - `discord-api`에는 `/custom`이 추가돼 parser 없이 빈 공개 check 메시지로 수동 정산을 시작할 수 있다.
+- `discord-api`는 현재 `Currency == KRW`인 영수증의 일반 `Tax`를 포함세로 보고 계산과 UI에서 제외한다. 한국 영수증에서 tax 이중 과금을 막기 위한 정책이다.
 - 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `receipt-parser` callback 검증 강화와 discount 귀속 정확도 확인이 유력하다.
 - `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.
