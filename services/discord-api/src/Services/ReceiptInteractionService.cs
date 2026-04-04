@@ -728,9 +728,9 @@ public sealed class ReceiptInteractionService
 
             foreach (var item in pageItems)
             {
-                var instanceIndex = GetInstanceIndex(session, item);
+                var displayName = GetSelectionDisplayName(session, item);
                 selectMenu.AddOption(
-                    label: $"{item.Name} #{instanceIndex}{(item.IsAlcohol ? " [Alcohol]" : string.Empty)}",
+                    label: $"{displayName}{(item.IsAlcohol ? " [Alcohol]" : string.Empty)}",
                     value: item.Id,
                     description: $"{FormatMoney(item.Amount, session.Currency)}",
                     isDefault: mode switch
@@ -892,6 +892,19 @@ public sealed class ReceiptInteractionService
             .Select((candidate, index) => new { candidate.Id, Index = index + 1 })
             .First(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal))
             .Index;
+    }
+
+    private static string GetSelectionDisplayName(ReceiptSessionState session, ReceiptLineItemState item)
+    {
+        var duplicateCount = session.Items.Count(candidate =>
+            string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal));
+
+        if (duplicateCount <= 1)
+        {
+            return item.Name;
+        }
+
+        return $"{item.Name} #{GetInstanceIndex(session, item)}";
     }
 
     private static string FormatMoney(decimal amount, string? currency)

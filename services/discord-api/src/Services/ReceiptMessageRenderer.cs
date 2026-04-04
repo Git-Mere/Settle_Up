@@ -148,26 +148,17 @@ public static class ReceiptMessageRenderer
 
     private static string BuildSharedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var groups = session.Items
+        var lines = session.Items
             .Select(item => new
             {
                 Item = item,
                 Users = renderContext.UsersByItemId.GetValueOrDefault(item.Id) ?? []
             })
             .Where(entry => entry.Users.Count > 1)
-            .GroupBy(entry => new SharedGroupingKey(
-                entry.Item.GroupKey,
-                entry.Item.GroupDisplayName,
-                string.Join('|', entry.Users),
-                entry.Item.Amount,
-                entry.Item.DiscountAmount,
-                entry.Item.IsAlcohol));
-
-        var lines = groups
-            .Select(group =>
+            .Select(entry =>
             {
-                var users = group.First().Users.Select(renderContext.ResolveUserDisplayName);
-                return $"• {FormatItemSummary(group.Key.Name, group.Key.IsAlcohol, group.Key.Amount * group.Count(), group.Key.DiscountAmount * group.Count(), session.Currency)} | {string.Join(", ", users)}";
+                var users = entry.Users.Select(renderContext.ResolveUserDisplayName);
+                return $"• {FormatItemSummary(GetDisplayItemName(session, entry.Item), entry.Item.IsAlcohol, entry.Item.Amount, entry.Item.DiscountAmount, session.Currency)} | {string.Join(", ", users)}";
             })
             .ToArray();
 
@@ -200,11 +191,10 @@ public static class ReceiptMessageRenderer
                 .Sum(item => item.Amount);
             sections.Add($"{userGroup.DisplayName} - {FormatMoney(individualTotal, session.Currency)}");
 
-            foreach (var itemGroup in userGroup.Items
-                         .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                         .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol)))
+            foreach (var item in userGroup.Items
+                         .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1))
             {
-                sections.Add($"• {FormatItemSummary(itemGroup.Key.Name, itemGroup.Key.IsAlcohol, itemGroup.Key.Amount * itemGroup.Count(), itemGroup.Key.DiscountAmount * itemGroup.Count(), session.Currency)}");
+                sections.Add($"• {FormatItemSummary(GetDisplayItemName(session, item), item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}");
             }
 
             sections.Add(string.Empty);
@@ -221,8 +211,7 @@ public static class ReceiptMessageRenderer
     private static string BuildUnassignedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
         var groups = renderContext.UnassignedItems
-            .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol))
-            .Select(group => $"• {FormatItemSummary(group.Key.Name, group.Key.IsAlcohol, group.Key.Amount * group.Count(), group.Key.DiscountAmount * group.Count(), session.Currency)}")
+            .Select(item => $"• {FormatItemSummary(GetDisplayItemName(session, item), item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}")
             .ToArray();
 
         return groups.Length == 0 ? "• None" : string.Join('\n', groups);
@@ -303,14 +292,12 @@ public static class ReceiptMessageRenderer
 
             var itemSummary = string.Join(
                 ", ",
-                userItems
-                    .GroupBy(item => new ItemGroupingKey(item.GroupKey, item.GroupDisplayName, item.Amount, item.DiscountAmount, item.IsAlcohol))
-                    .Select(itemGroup => FormatItemSummary(
-                        itemGroup.Key.Name,
-                        itemGroup.Key.IsAlcohol,
-                        itemGroup.Key.Amount * itemGroup.Count(),
-                        itemGroup.Key.DiscountAmount * itemGroup.Count(),
-                        session.Currency)));
+                userItems.Select(item => FormatItemSummary(
+                    GetDisplayItemName(session, item),
+                    item.IsAlcohol,
+                    item.Amount,
+                    item.DiscountAmount,
+                    session.Currency)));
 
             sections.Add($"Items: {itemSummary}");
 
@@ -328,6 +315,25 @@ public static class ReceiptMessageRenderer
     private static string FormatItemName(string name, bool isAlcohol)
     {
         return isAlcohol ? $"{name} 🥃" : name;
+    }
+
+    private static string GetDisplayItemName(ReceiptSessionState session, ReceiptLineItemState item)
+    {
+        var duplicateCount = session.Items.Count(candidate =>
+            string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal));
+
+        if (duplicateCount <= 1)
+        {
+            return item.GroupDisplayName;
+        }
+
+        var instanceIndex = session.Items
+            .Where(candidate => string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal))
+            .Select((candidate, index) => new { candidate.Id, Index = index + 1 })
+            .First(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal))
+            .Index;
+
+        return $"{item.GroupDisplayName} #{instanceIndex}";
     }
 
     private static string FormatItemSummary(string name, bool isAlcohol, decimal amount, decimal discountAmount, string? currency)
@@ -352,10 +358,6 @@ public static class ReceiptMessageRenderer
     {
         builder.AddField("\u200B", "\u200B", inline: true);
     }
-
-    private sealed record SharedGroupingKey(string GroupKey, string Name, string UsersKey, decimal Amount, decimal DiscountAmount, bool IsAlcohol);
-
-    private sealed record ItemGroupingKey(string GroupKey, string Name, decimal Amount, decimal DiscountAmount, bool IsAlcohol);
 
     private sealed class ReceiptRenderContext
     {
