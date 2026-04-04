@@ -28,7 +28,7 @@ public sealed class ReceiptDraftTestDataLoader
         var payload = await JsonSerializer.DeserializeAsync<ReceiptDraftNotificationRequest>(stream, JsonOptions);
         if (payload is null)
         {
-            throw new InvalidOperationException("테스트 영수증 JSON을 읽을 수 없습니다.");
+            throw new InvalidOperationException("Failed to read the test receipt JSON.");
         }
 
         var uniqueDraftId = $"test-receipt-ui-{Guid.NewGuid():N}";

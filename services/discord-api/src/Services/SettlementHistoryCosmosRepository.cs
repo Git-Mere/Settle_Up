@@ -25,7 +25,7 @@ public sealed class SettlementHistoryCosmosRepository
             if (string.IsNullOrWhiteSpace(_options.CosmosAccountEndpoint))
             {
                 throw new InvalidOperationException(
-                    "SettlementHistory:CosmosConnectionString 또는 SettlementHistory:CosmosAccountEndpoint 설정이 필요합니다.");
+                    "SettlementHistory:CosmosConnectionString or SettlementHistory:CosmosAccountEndpoint is required.");
             }
 
             _cosmosClient = new CosmosClient(

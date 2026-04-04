@@ -7,6 +7,7 @@ public sealed class ReceiptSessionState
     public string? MerchantName { get; set; }
     public string? UploadedByUserId { get; set; }
     public string? UploadedByDisplayName { get; set; }
+    public AppLanguage PublicLanguage { get; set; } = AppLanguage.English;
     public string? PaymentContact { get; set; }
     public DateOnly? TransactionDate { get; set; }
     public string? Currency { get; set; }

@@ -13,16 +13,19 @@ sealed class SettleUpCommandHandler
 
     private readonly BlobUploaderProvider _blobUploaderProvider;
     private readonly ReceiptDraftSessionService _receiptDraftSessionService;
+    private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<SettleUpCommandHandler> _logger;
     private readonly ConcurrentDictionary<ulong, SocketMessageComponent> _uploadPromptInteractions = new();
 
     public SettleUpCommandHandler(
         BlobUploaderProvider blobUploaderProvider,
         ReceiptDraftSessionService receiptDraftSessionService,
+        UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<SettleUpCommandHandler> logger)
     {
         _blobUploaderProvider = blobUploaderProvider;
         _receiptDraftSessionService = receiptDraftSessionService;
+        _languagePreferenceStore = languagePreferenceStore;
         _logger = logger;
     }
 
@@ -30,7 +33,7 @@ sealed class SettleUpCommandHandler
     {
         return new SlashCommandBuilder()
             .WithName(CommandName)
-            .WithDescription("정산 이미지 업로드를 시작합니다.")
+            .WithDescription(DiscordUiText.SettleUpCommandDescription(AppLanguage.English))
             .Build();
     }
 
@@ -38,16 +41,17 @@ sealed class SettleUpCommandHandler
     {
         _logger.LogInformation("Settle-up command accepted. UserId={UserId} GuildId={GuildId}", command.User.Id, command.GuildId);
 
+        var language = _languagePreferenceStore.GetLanguage(command.User.Id.ToString());
         var buttonCustomId = $"{UploadButtonPrefix}:{command.User.Id}";
         var component = new ComponentBuilder()
             .WithButton(
-                label: "영수증 업로드",
+                label: DiscordUiText.UploadReceiptButton(language),
                 customId: buttonCustomId,
                 style: ButtonStyle.Primary)
             .Build();
 
         await command.RespondAsync(
-            "아래 버튼을 누르면 이미지 업로드를 시작합니다.",
+            DiscordUiText.UploadPromptText(language),
             components: component,
             ephemeral: true);
 
@@ -63,40 +67,41 @@ sealed class SettleUpCommandHandler
 
         if (!TryGetCommandOwnerId(component.Data.CustomId, out var ownerId))
         {
-            await component.RespondAsync("버튼 정보가 올바르지 않습니다. `/settle-up`을 다시 실행해 주세요.", ephemeral: true);
+            await component.RespondAsync(DiscordUiText.InvalidButtonInfo(_languagePreferenceStore.GetLanguage(component.User.Id.ToString())), ephemeral: true);
             return "invalid_custom_id";
         }
 
         if (component.User.Id != ownerId)
         {
-            await component.RespondAsync("이 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다.", ephemeral: true);
+            await component.RespondAsync(DiscordUiText.ButtonOwnerOnly(_languagePreferenceStore.GetLanguage(component.User.Id.ToString())), ephemeral: true);
             return "forbidden_user";
         }
 
         if (_blobUploaderProvider.Uploader is null)
         {
-            await component.RespondAsync("Blob 저장소 설정이 비어 있어 업로드할 수 없습니다. 환경변수 설정을 확인해 주세요.", ephemeral: true);
+            await component.RespondAsync(DiscordUiText.BlobNotConfigured(_languagePreferenceStore.GetLanguage(component.User.Id.ToString())), ephemeral: true);
             _logger.LogWarning("Settle-up upload blocked because blob uploader is not configured. UserId={UserId} Reason={Reason}", component.User.Id, _blobUploaderProvider.InitializationError);
             return "blob_not_configured";
         }
 
+        var language = _languagePreferenceStore.GetLanguage(component.User.Id.ToString());
         var modalCustomId = $"{UploadModalPrefix}:{component.User.Id}";
         var modal = new ModalBuilder()
-            .WithTitle("영수증 업로드")
+            .WithTitle(DiscordUiText.UploadModalTitle(language))
             .WithCustomId(modalCustomId)
             .AddFileUpload(
-                label: "이미지 파일",
+                label: DiscordUiText.UploadImageLabel(language),
                 customId: UploadFileCustomId,
                 minValues: 1,
                 maxValues: 1,
                 isRequired: true,
-                description: "jpg 또는 png 파일을 업로드해 주세요.")
+                description: DiscordUiText.UploadImageDescription(language))
             .AddTextInput(
-                label: "계좌번호 / 전화번호 / 이메일(zelle) - 선택, 저장되지 않음",
+                label: DiscordUiText.PaymentContactLabel(language),
                 customId: PaymentContactCustomId,
                 style: TextInputStyle.Paragraph,
                 required: false,
-                placeholder: "예: 010-1234-5678 / example@email.com",
+                placeholder: DiscordUiText.PaymentContactPlaceholder(language),
                 maxLength: 200)
             .Build();
 
@@ -114,19 +119,19 @@ sealed class SettleUpCommandHandler
 
         if (!TryGetCommandOwnerId(modal.Data.CustomId, out var ownerId))
         {
-            await modal.RespondAsync("모달 정보가 올바르지 않습니다. `/settle-up`을 다시 실행해 주세요.", ephemeral: true);
+            await modal.RespondAsync(DiscordUiText.InvalidModalInfo(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             return "invalid_modal_id";
         }
 
         if (modal.User.Id != ownerId)
         {
-            await modal.RespondAsync("이 모달은 명령어를 실행한 사용자만 제출할 수 있습니다.", ephemeral: true);
+            await modal.RespondAsync(DiscordUiText.ModalOwnerOnly(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             return "forbidden_user";
         }
 
         if (_blobUploaderProvider.Uploader is null)
         {
-            await modal.RespondAsync("Blob 저장소 설정이 비어 있어 업로드할 수 없습니다. 환경변수 설정을 확인해 주세요.", ephemeral: true);
+            await modal.RespondAsync(DiscordUiText.BlobNotConfigured(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             _logger.LogWarning("Modal upload blocked because blob uploader is not configured. UserId={UserId} Reason={Reason}", modal.User.Id, _blobUploaderProvider.InitializationError);
             return "blob_not_configured";
         }
@@ -134,7 +139,7 @@ sealed class SettleUpCommandHandler
         var attachment = modal.Data.Attachments.FirstOrDefault();
         if (attachment is null)
         {
-            await modal.RespondAsync("업로드된 파일을 찾을 수 없습니다. 다시 시도해 주세요.", ephemeral: true);
+            await modal.RespondAsync(DiscordUiText.MissingAttachment(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             return "missing_attachment";
         }
 
@@ -168,7 +173,7 @@ sealed class SettleUpCommandHandler
                 await _receiptDraftSessionService.DeletePendingUploadSessionAsync(pendingSession.ReceiptId, CancellationToken.None);
             }
 
-            await modal.FollowupAsync(invalidEx.Message, ephemeral: true);
+            await modal.FollowupAsync(DiscordUiText.InvalidImageFile(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             _logger.LogWarning("Blob upload rejected. UserId={UserId} FileName={FileName} Reason={Reason}", modal.User.Id, attachment.Filename, invalidEx.Message);
             return "invalid_image";
         }
@@ -179,7 +184,7 @@ sealed class SettleUpCommandHandler
                 await _receiptDraftSessionService.DeletePendingUploadSessionAsync(pendingSession.ReceiptId, CancellationToken.None);
             }
 
-            await modal.FollowupAsync("Blob 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true);
+            await modal.FollowupAsync(DiscordUiText.UploadFailed(_languagePreferenceStore.GetLanguage(modal.User.Id.ToString())), ephemeral: true);
             _logger.LogError(ex, "Blob upload failed. UserId={UserId} FileName={FileName}", modal.User.Id, attachment.Filename);
             return "upload_error";
         }

@@ -9,15 +9,18 @@ sealed class TestReceiptCommandHandler
 
     private readonly ReceiptDraftTestDataLoader _testDataLoader;
     private readonly ReceiptDraftSessionService _receiptDraftSessionService;
+    private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<TestReceiptCommandHandler> _logger;
 
     public TestReceiptCommandHandler(
         ReceiptDraftTestDataLoader testDataLoader,
         ReceiptDraftSessionService receiptDraftSessionService,
+        UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<TestReceiptCommandHandler> logger)
     {
         _testDataLoader = testDataLoader;
         _receiptDraftSessionService = receiptDraftSessionService;
+        _languagePreferenceStore = languagePreferenceStore;
         _logger = logger;
     }
 
@@ -25,10 +28,10 @@ sealed class TestReceiptCommandHandler
     {
         return new SlashCommandBuilder()
             .WithName(CommandName)
-            .WithDescription("테스트 영수증 UI를 생성합니다.")
+            .WithDescription(DiscordUiText.TestCommandDescription(AppLanguage.English))
             .AddOption(new SlashCommandOptionBuilder()
                 .WithName(ScenarioOptionName)
-                .WithDescription("테스트할 영수증 시나리오를 선택합니다.")
+                .WithDescription(DiscordUiText.TestScenarioDescription(AppLanguage.English))
                 .WithRequired(true)
                 .WithType(ApplicationCommandOptionType.String)
                 .AddChoice("General Market", ReceiptDraftTestScenario.GeneralMarket)
@@ -42,6 +45,7 @@ sealed class TestReceiptCommandHandler
     public async Task<string> HandleSlashCommandAsync(SocketSlashCommand command)
     {
         await command.DeferAsync();
+        var language = _languagePreferenceStore.GetLanguage(command.User.Id.ToString());
 
         try
         {
@@ -67,7 +71,7 @@ sealed class TestReceiptCommandHandler
         }
         catch (Exception ex)
         {
-            await command.FollowupAsync("테스트 영수증 세션 생성 중 오류가 발생했습니다. 로그를 확인해 주세요.");
+            await command.FollowupAsync(DiscordUiText.TestSessionError(language));
 
             _logger.LogError(ex, "Test receipt session creation failed. UserId={UserId}", command.User.Id);
             return "error";

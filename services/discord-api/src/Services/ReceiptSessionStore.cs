@@ -72,4 +72,9 @@ public sealed class ReceiptSessionStore
 
         return true;
     }
+
+    public IReadOnlyList<ReceiptSessionState> GetAll()
+    {
+        return _sessions.Values.ToArray();
+    }
 }

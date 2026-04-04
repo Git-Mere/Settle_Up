@@ -8,6 +8,7 @@ public sealed class ReceiptDraftSessionService
     private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ReceiptMainMessageDebounceService _debounceService;
+    private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<ReceiptDraftSessionService> _logger;
 
     public ReceiptDraftSessionService(
@@ -16,6 +17,7 @@ public sealed class ReceiptDraftSessionService
         ReceiptSessionLockManager lockManager,
         ReceiptMainMessageService mainMessageService,
         ReceiptMainMessageDebounceService debounceService,
+        UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<ReceiptDraftSessionService> logger)
     {
         _discordClient = discordClient;
@@ -23,6 +25,7 @@ public sealed class ReceiptDraftSessionService
         _lockManager = lockManager;
         _mainMessageService = mainMessageService;
         _debounceService = debounceService;
+        _languagePreferenceStore = languagePreferenceStore;
         _logger = logger;
     }
 
@@ -44,6 +47,7 @@ public sealed class ReceiptDraftSessionService
                 uploadedByUserId,
                 uploadedByDisplayName,
                 paymentContact);
+            session.PublicLanguage = _languagePreferenceStore.GetLanguage(uploadedByUserId);
 
             session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
 
@@ -135,6 +139,7 @@ public sealed class ReceiptDraftSessionService
             ?? throw new InvalidOperationException("uploadedByUserId is required.");
 
         var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId);
+        var publicLanguage = _languagePreferenceStore.GetLanguage(uploadedByUserId);
         var lockKey = ResolveLockKey(payload, receiptId);
 
         await _lockManager.ExecuteAsync(lockKey, async () =>
@@ -153,13 +158,14 @@ public sealed class ReceiptDraftSessionService
             ReceiptSessionStateService.ApplyDraftPayload(session, payload, displayName);
             session.UserDisplayNames[uploadedByUserId] = displayName;
             session.UploadedByDisplayName = displayName;
+            session.PublicLanguage = publicLanguage;
             session.MainChannel ??= targetChannel;
             session.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
             if (shouldReplacePendingMessage)
             {
                 var publishChannel = session.MainChannel ?? targetChannel
-                    ?? throw new InvalidOperationException("pending 메시지를 교체하려면 대상 채널이 필요합니다.");
+                    ?? throw new InvalidOperationException("A target channel is required to replace the pending message.");
 
                 _debounceService.CancelRefresh(previousReceiptId!);
                 await _mainMessageService.SendToChannelAsync(session, publishChannel, cancellationToken);
@@ -192,7 +198,7 @@ public sealed class ReceiptDraftSessionService
             }
             else
             {
-                throw new InvalidOperationException("기존 채널 세션이 없으면 draft 메시지를 채널에 보낼 수 없습니다.");
+                throw new InvalidOperationException("Cannot publish a draft message without an existing channel session.");
             }
 
             _sessionStore.AddOrUpdate(session, previousReceiptId, previousBlobUrl);

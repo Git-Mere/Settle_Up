@@ -10,6 +10,7 @@ sealed class DiscordBotWorker : IHostedService
     private readonly ILogger<DiscordBotWorker> _logger;
     private readonly PingTestCommandHandler _pingTestHandler;
     private readonly TestReceiptCommandHandler _testReceiptHandler;
+    private readonly LanguageCommandHandler _languageHandler;
     private readonly HistoryCommandHandler _historyHandler;
     private readonly SettleUpCommandHandler _settleUpHandler;
     private readonly string? _token;
@@ -23,6 +24,7 @@ sealed class DiscordBotWorker : IHostedService
         IHostEnvironment hostEnvironment,
         PingTestCommandHandler pingTestHandler,
         TestReceiptCommandHandler testReceiptHandler,
+        LanguageCommandHandler languageHandler,
         HistoryCommandHandler historyHandler,
         SettleUpCommandHandler settleUpHandler,
         ReceiptInteractionService receiptInteractionService)
@@ -31,6 +33,7 @@ sealed class DiscordBotWorker : IHostedService
         _logger = logger;
         _pingTestHandler = pingTestHandler;
         _testReceiptHandler = testReceiptHandler;
+        _languageHandler = languageHandler;
         _historyHandler = historyHandler;
         _settleUpHandler = settleUpHandler;
         _receiptInteractionService = receiptInteractionService;
@@ -53,7 +56,7 @@ sealed class DiscordBotWorker : IHostedService
     {
         if (string.IsNullOrWhiteSpace(_token))
         {
-            throw new InvalidOperationException("환경 변수 DISCORD_BOT_TOKEN 이 필요합니다.");
+            throw new InvalidOperationException("The DISCORD_BOT_TOKEN environment variable is required.");
         }
 
         _logger.LogInformation("Bot starting.");
@@ -102,6 +105,7 @@ sealed class DiscordBotWorker : IHostedService
         var commands = new List<ApplicationCommandProperties>
         {
             SettleUpCommandHandler.BuildCommand(),
+            LanguageCommandHandler.BuildCommand(),
             HistoryCommandHandler.BuildCommand()
         };
 
@@ -172,6 +176,10 @@ sealed class DiscordBotWorker : IHostedService
             else if (string.Equals(command.Data.Name, HistoryCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _historyHandler.HandleSlashCommandAsync(command);
+            }
+            else if (string.Equals(command.Data.Name, LanguageCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            {
+                status = await _languageHandler.HandleSlashCommandAsync(command);
             }
             else
             {

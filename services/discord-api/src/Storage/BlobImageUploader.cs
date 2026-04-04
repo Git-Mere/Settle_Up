@@ -22,7 +22,7 @@ sealed class BlobImageUploader
         var containerName = Environment.GetEnvironmentVariable("AZURE_BLOB_CONTAINER_NAME");
         if (string.IsNullOrWhiteSpace(containerName))
         {
-            error = "AZURE_BLOB_CONTAINER_NAME 환경 변수가 필요합니다.";
+            error = "The AZURE_BLOB_CONTAINER_NAME environment variable is required.";
             return null;
         }
 
@@ -44,7 +44,7 @@ sealed class BlobImageUploader
             }
             else
             {
-                error = "AZURE_BLOB_CONNECTION_STRING 또는 AZURE_BLOB_ACCOUNT_URL 중 하나가 필요합니다.";
+                error = "Either AZURE_BLOB_CONNECTION_STRING or AZURE_BLOB_ACCOUNT_URL is required.";
                 return null;
             }
 
@@ -53,7 +53,7 @@ sealed class BlobImageUploader
         }
         catch (Exception ex)
         {
-            error = $"Blob 클라이언트 초기화 실패: {ex.Message}";
+            error = $"Blob client initialization failed: {ex.Message}";
             return null;
         }
     }
@@ -62,7 +62,7 @@ sealed class BlobImageUploader
     {
         if (!TryResolveImageMetadata(attachment, out var extension, out var contentType))
         {
-            throw new InvalidOperationException("jpg/jpeg/png 파일만 업로드할 수 있습니다.");
+            throw new InvalidOperationException("Only jpg/jpeg/png files can be uploaded.");
         }
 
         _logger.LogInformation("Ensuring blob container exists. ContainerName={ContainerName}", _containerClient.Name);

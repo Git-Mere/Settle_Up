@@ -2,44 +2,44 @@ using Discord;
 
 public static class SettlementHistoryMessageRenderer
 {
-    public static Embed RenderList(IReadOnlyList<ConfirmedSettlementHistoryDocument> histories)
+    public static Embed RenderList(IReadOnlyList<ConfirmedSettlementHistoryDocument> histories, AppLanguage language)
     {
         var builder = new EmbedBuilder()
-            .WithTitle("Settlement History")
+            .WithTitle(DiscordUiText.SettlementHistoryTitle(language))
             .WithColor(new Color(52, 152, 219));
 
         foreach (var (history, index) in histories.Select((history, index) => (history, index)))
         {
             builder.AddField(
-                $"{index + 1}. {history.MerchantName ?? "Unknown"}",
-                BuildListLine(history),
+                $"{index + 1}. {history.MerchantName ?? DiscordUiText.Unknown(language)}",
+                BuildListLine(history, language),
                 inline: false);
         }
 
-        builder.WithFooter("상세 조회는 /history detail index:<번호> 를 사용하세요.");
+        builder.WithFooter(DiscordUiText.HistoryListFooter(language));
         return builder.Build();
     }
 
-    public static Embed RenderDetail(ConfirmedSettlementHistoryDocument history)
+    public static Embed RenderDetail(ConfirmedSettlementHistoryDocument history, AppLanguage language)
     {
         var builder = new EmbedBuilder()
-            .WithTitle("Settlement History Detail")
+            .WithTitle(DiscordUiText.SettlementHistoryDetailTitle(language))
             .WithColor(new Color(46, 204, 113))
-            .AddField("Seller Name", history.MerchantName ?? "Unknown", inline: true)
-            .AddField("Purchase Date", history.TransactionDate?.ToString("yyyy-MM-dd") ?? "Unknown", inline: true)
-            .AddField("Buyer Name", history.UploadedByDisplayName ?? history.UploadedByUserId, inline: true)
-            .AddField("Item Total Price", FormatMoney(history.Subtotal ?? 0m, history.Currency), inline: true);
+            .AddField(DiscordUiText.SellerNameField(language), history.MerchantName ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.PurchaseDateField(language), history.TransactionDate?.ToString("yyyy-MM-dd") ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.BuyerNameField(language), history.UploadedByDisplayName ?? history.UploadedByUserId, inline: true)
+            .AddField(DiscordUiText.ItemTotalPriceField(language), FormatMoney(history.Subtotal ?? 0m, history.Currency), inline: true);
 
         if ((history.Tax ?? 0m) > 0m)
         {
-            builder.AddField("Tax", FormatMoney(history.Tax!.Value, history.Currency), inline: true);
+            builder.AddField(DiscordUiText.TaxField(language), FormatMoney(history.Tax!.Value, history.Currency), inline: true);
         }
         else
         {
             AddInlineSpacer(builder);
         }
 
-        builder.AddField("Total Price", history.Total is decimal total ? FormatMoney(total, history.Currency) : "Unknown", inline: true);
+        builder.AddField(DiscordUiText.TotalPriceField(language), history.Total is decimal total ? FormatMoney(total, history.Currency) : DiscordUiText.Unknown(language), inline: true);
 
         var hasTip = (history.Tip ?? 0m) > 0m;
         var hasSst = (history.Sst ?? 0m) > 0m;
@@ -48,7 +48,7 @@ public static class SettlementHistoryMessageRenderer
         {
             if (hasTip)
             {
-                builder.AddField("Tip", FormatMoney(history.Tip!.Value, history.Currency), inline: true);
+                builder.AddField(DiscordUiText.TipField(language), FormatMoney(history.Tip!.Value, history.Currency), inline: true);
             }
             else
             {
@@ -74,23 +74,23 @@ public static class SettlementHistoryMessageRenderer
             }
         }
 
-        builder.AddField("Pay to", history.PaymentContact ?? "정산 수단이 입력되지 않았습니다.", inline: false);
-        builder.AddField("Settlement", BuildSettlementSection(history), inline: false);
-        builder.WithFooter($"Confirmed at {history.ConfirmedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}");
+        builder.AddField(DiscordUiText.PayToField(language), history.PaymentContact ?? DiscordUiText.PaymentContactMissing(language), inline: false);
+        builder.AddField(DiscordUiText.SettlementField(language), BuildSettlementSection(history, language), inline: false);
+        builder.WithFooter(DiscordUiText.HistoryDetailFooter(language, history.ConfirmedAtUtc));
         return builder.Build();
     }
 
-    private static string BuildListLine(ConfirmedSettlementHistoryDocument history)
+    private static string BuildListLine(ConfirmedSettlementHistoryDocument history, AppLanguage language)
     {
         var participantSummary = history.Participants.Count == 0
-            ? "None"
+            ? DiscordUiText.None(language)
             : string.Join(", ", history.Participants.Select(participant => $"{participant.DisplayName} {FormatMoney(participant.Amount, history.Currency)}"));
 
-        var purchaseLabel = history.TransactionDate?.ToString("M/d/yyyy") ?? "Unknown";
-        return $"{purchaseLabel} (purchase) | {FormatMoney(history.Total ?? 0m, history.Currency)}\n{participantSummary}";
+        var purchaseLabel = history.TransactionDate?.ToString("M/d/yyyy") ?? DiscordUiText.Unknown(language);
+        return $"{purchaseLabel} ({DiscordUiText.PurchaseLabel(language)}) | {FormatMoney(history.Total ?? 0m, history.Currency)}\n{participantSummary}";
     }
 
-    private static string BuildSettlementSection(ConfirmedSettlementHistoryDocument history)
+    private static string BuildSettlementSection(ConfirmedSettlementHistoryDocument history, AppLanguage language)
     {
         var sections = new List<string>();
         foreach (var participant in history.Participants)
@@ -98,10 +98,10 @@ public static class SettlementHistoryMessageRenderer
             sections.Add($"• {participant.DisplayName} - {FormatMoney(participant.Amount, history.Currency)}");
 
             var itemSummary = participant.Items.Count == 0
-                ? "None"
+                ? DiscordUiText.None(language)
                 : string.Join(", ", participant.Items.Select(item => $"{FormatItemName(item.Name, item.IsAlcohol)} x{item.Quantity} - {FormatMoney(item.Amount, history.Currency)}"));
 
-            sections.Add($"Items: {itemSummary}");
+            sections.Add($"{DiscordUiText.ItemsLabel(language)}: {itemSummary}");
             sections.Add(string.Empty);
         }
 
@@ -110,7 +110,7 @@ public static class SettlementHistoryMessageRenderer
             sections.RemoveAt(sections.Count - 1);
         }
 
-        return sections.Count == 0 ? "• None" : string.Join('\n', sections);
+        return sections.Count == 0 ? $"• {DiscordUiText.None(language)}" : string.Join('\n', sections);
     }
 
     private static string FormatItemName(string name, bool isAlcohol)

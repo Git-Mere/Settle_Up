@@ -36,75 +36,79 @@ public static class ReceiptMessageRenderer
 
     private static Embed RenderPendingEmbed(ReceiptSessionState session)
     {
+        var language = session.PublicLanguage;
         return new EmbedBuilder()
-            .WithTitle("Settlement Check")
+            .WithTitle(DiscordUiText.SettlementCheckTitle(language))
             .WithColor(new Color(230, 126, 34))
-            .AddField("Status", "영수증을 분석 중입니다. 파싱이 끝나면 같은 채널 메시지가 자동으로 갱신됩니다.", inline: false)
-            .AddField("Buyer Name", session.UploadedByDisplayName ?? session.UploadedByUserId ?? "Unknown", inline: true)
-            .AddField("Seller Name", session.MerchantName ?? "Pending", inline: true)
-            .AddField("Purchase Date", session.TransactionDate?.ToString("yyyy-MM-dd") ?? "Pending", inline: true)
+            .AddField(DiscordUiText.StatusField(language), DiscordUiText.PendingStatusText(language), inline: false)
+            .AddField(DiscordUiText.BuyerNameField(language), session.UploadedByDisplayName ?? session.UploadedByUserId ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.SellerNameField(language), session.MerchantName ?? DiscordUiText.Pending(language), inline: true)
+            .AddField(DiscordUiText.PurchaseDateField(language), session.TransactionDate?.ToString("yyyy-MM-dd") ?? DiscordUiText.Pending(language), inline: true)
             .WithFooter("Settle Up")
             .Build();
     }
 
     private static Embed RenderCheckEmbed(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var builder = CreateHeaderBuilder(session, "Settlement Check", new Color(52, 152, 219), renderContext.ItemsTotal);
-        builder.AddField("Shared", BuildSharedSection(session, renderContext), inline: false);
-        builder.AddField("Individual", BuildIndividualSection(session, renderContext), inline: false);
-        builder.AddField("Unassigned", BuildUnassignedSection(session, renderContext), inline: false);
+        var language = session.PublicLanguage;
+        var builder = CreateHeaderBuilder(session, DiscordUiText.SettlementCheckTitle(language), new Color(52, 152, 219), renderContext.ItemsTotal);
+        builder.AddField(DiscordUiText.SharedField(language), BuildSharedSection(session, renderContext), inline: false);
+        builder.AddField(DiscordUiText.IndividualField(language), BuildIndividualSection(session, renderContext), inline: false);
+        builder.AddField(DiscordUiText.UnassignedField(language), BuildUnassignedSection(session, renderContext), inline: false);
         if ((session.Tax ?? 0m) > 0m || (session.Sst ?? 0m) > 0m || (session.Slt ?? 0m) > 0m)
         {
-            builder.AddField("Tax", BuildTaxSection(session, renderContext), inline: false);
+            builder.AddField(DiscordUiText.TaxField(language), BuildTaxSection(session, renderContext), inline: false);
         }
 
         if ((session.Tip ?? 0m) > 0m)
         {
-            builder.AddField("Tip", BuildTipSection(session, renderContext), inline: false);
+            builder.AddField(DiscordUiText.TipField(language), BuildTipSection(session, renderContext), inline: false);
         }
 
         builder.WithFooter(ReceiptSessionStateService.GetConfirmBlockReason(session)
-            ?? "모든 아이템이 배정되어 confirm 가능합니다.");
+            ?? DiscordUiText.ConfirmReadyFooter(language));
         return builder.Build();
     }
 
     private static Embed RenderConfirmedEmbed(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var builder = CreateHeaderBuilder(session, "Settlement Confirmed", new Color(46, 204, 113), renderContext.ItemsTotal);
-        builder.AddField("Pay to", session.PaymentContact ?? "정산 수단이 입력되지 않았습니다.", inline: false);
+        var language = session.PublicLanguage;
+        var builder = CreateHeaderBuilder(session, DiscordUiText.SettlementConfirmedTitle(language), new Color(46, 204, 113), renderContext.ItemsTotal);
+        builder.AddField(DiscordUiText.PayToField(language), session.PaymentContact ?? DiscordUiText.PaymentContactMissing(language), inline: false);
 
         var settlementLines = renderContext.SettlementLines;
         builder.AddField(
-            "Settlement",
+            DiscordUiText.SettlementField(language),
             settlementLines.Count == 0
-                ? $"• {session.UploadedByDisplayName ?? session.UploadedByUserId ?? "Unknown"} - {FormatMoney(0m, session.Currency)}"
+                ? $"• {session.UploadedByDisplayName ?? session.UploadedByUserId ?? DiscordUiText.Unknown(language)} - {FormatMoney(0m, session.Currency)}"
                 : BuildConfirmedSettlementSection(session, renderContext),
             inline: false);
 
-        builder.WithFooter($"Confirmed at {session.ConfirmedAtUtc?.ToString("yyyy-MM-dd HH:mm")} UTC");
+        builder.WithFooter(DiscordUiText.ConfirmedAtFooter(language, session.ConfirmedAtUtc));
         return builder.Build();
     }
 
     private static EmbedBuilder CreateHeaderBuilder(ReceiptSessionState session, string title, Color color, decimal itemsTotal)
     {
+        var language = session.PublicLanguage;
         var builder = new EmbedBuilder()
             .WithTitle(title)
             .WithColor(color)
-            .AddField("Seller Name", session.MerchantName ?? "Unknown", inline: true)
-            .AddField("Purchase Date", session.TransactionDate?.ToString("yyyy-MM-dd") ?? "Unknown", inline: true)
-            .AddField("Buyer Name", session.UploadedByDisplayName ?? session.UploadedByUserId ?? "Unknown", inline: true)
-            .AddField("Item Total Price", FormatMoney(itemsTotal, session.Currency), inline: true);
+            .AddField(DiscordUiText.SellerNameField(language), session.MerchantName ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.PurchaseDateField(language), session.TransactionDate?.ToString("yyyy-MM-dd") ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.BuyerNameField(language), session.UploadedByDisplayName ?? session.UploadedByUserId ?? DiscordUiText.Unknown(language), inline: true)
+            .AddField(DiscordUiText.ItemTotalPriceField(language), FormatMoney(itemsTotal, session.Currency), inline: true);
 
         if ((session.Tax ?? 0m) > 0m)
         {
-            builder.AddField("Tax", FormatMoney(session.Tax!.Value, session.Currency), inline: true);
+            builder.AddField(DiscordUiText.TaxField(language), FormatMoney(session.Tax!.Value, session.Currency), inline: true);
         }
         else
         {
             AddInlineSpacer(builder);
         }
 
-        builder.AddField("Total Price", session.Total is decimal total ? FormatMoney(total, session.Currency) : "Unknown", inline: true);
+        builder.AddField(DiscordUiText.TotalPriceField(language), session.Total is decimal total ? FormatMoney(total, session.Currency) : DiscordUiText.Unknown(language), inline: true);
 
         var hasTip = (session.Tip ?? 0m) > 0m;
         var hasSst = (session.Sst ?? 0m) > 0m;
@@ -113,7 +117,7 @@ public static class ReceiptMessageRenderer
         {
             if (hasTip)
             {
-                builder.AddField("Tip", FormatMoney(session.Tip!.Value, session.Currency), inline: true);
+                builder.AddField(DiscordUiText.TipField(language), FormatMoney(session.Tip!.Value, session.Currency), inline: true);
             }
             else
             {

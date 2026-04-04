@@ -14,6 +14,7 @@ public sealed class ReceiptInteractionService
     private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ReceiptMainMessageDebounceService _debounceService;
     private readonly SettlementHistoryRepositoryProvider _settlementHistoryRepositoryProvider;
+    private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<ReceiptInteractionService> _logger;
 
     public ReceiptInteractionService(
@@ -22,6 +23,7 @@ public sealed class ReceiptInteractionService
         ReceiptMainMessageService mainMessageService,
         ReceiptMainMessageDebounceService debounceService,
         SettlementHistoryRepositoryProvider settlementHistoryRepositoryProvider,
+        UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<ReceiptInteractionService> logger)
     {
         _sessionStore = sessionStore;
@@ -29,6 +31,7 @@ public sealed class ReceiptInteractionService
         _mainMessageService = mainMessageService;
         _debounceService = debounceService;
         _settlementHistoryRepositoryProvider = settlementHistoryRepositoryProvider;
+        _languagePreferenceStore = languagePreferenceStore;
         _logger = logger;
     }
 
@@ -184,20 +187,20 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, "해당 영수증 세션을 찾을 수 없습니다.", null);
+                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), null);
                 return "session_not_found";
             }
 
             if (!session.IsDraftReady && mode != ReceiptSelectionMode.Assign)
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, "영수증 분석이 아직 끝나지 않았습니다.", null);
+                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.DraftNotReady(GetLanguage(component.User.Id)), null);
                 return "draft_not_ready";
             }
 
             if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit || mode == ReceiptSelectionMode.Alcohol) &&
                 !IsOwner(session, component.User.Id))
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, "정산자만 이 기능을 사용할 수 있습니다.", null);
+                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.OwnerOnlyFeature(GetLanguage(component.User.Id)), null);
                 return "forbidden_user";
             }
 
@@ -212,7 +215,7 @@ public sealed class ReceiptInteractionService
             await RespondOrUpdateAsync(
                 component,
                 updateExistingMessage,
-                BuildSelectionPrompt(mode, session, page),
+                BuildSelectionPrompt(mode, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id)),
                 BuildSelectionComponents(session, component.User.Id.ToString(), mode, page));
 
             if (!updateExistingMessage)
@@ -238,7 +241,7 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
@@ -254,7 +257,7 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Assign, session, page);
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Assign, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
                 properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Assign, page);
             });
 
@@ -269,20 +272,20 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("정산자만 아이템을 제거할 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyRemove(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
             var itemId = component.Data.Values.FirstOrDefault();
             if (string.IsNullOrWhiteSpace(itemId) || !ReceiptSessionStateService.RemoveItem(session, itemId))
             {
-                await component.RespondAsync("제거할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.RemoveItemNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "remove_item_not_found";
             }
 
@@ -291,7 +294,7 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Remove, session, nextPage);
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Remove, nextPage, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
                 properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Remove, nextPage);
             });
 
@@ -306,13 +309,13 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyEdit(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
@@ -320,22 +323,23 @@ public sealed class ReceiptInteractionService
             var item = session.Items.SingleOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
             if (item is null)
             {
-                await component.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.EditItemNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "edit_item_not_found";
             }
 
+            var language = GetLanguage(component.User.Id);
             var modal = new ModalBuilder()
-                .WithTitle("아이템 수정")
+                .WithTitle(DiscordUiText.EditItemModalTitle(language))
                 .WithCustomId($"{ReceiptInteractionCustomIds.EditItemModalPrefix}:{receiptId}:{CreateEditToken(session, item.Id)}")
                 .AddTextInput(
-                    label: "아이템 이름",
+                    label: DiscordUiText.ItemNameLabel(language),
                     customId: ReceiptInteractionCustomIds.ItemNameInputCustomId,
                     style: TextInputStyle.Short,
                     required: true,
                     value: item.Name,
                     maxLength: 100)
                 .AddTextInput(
-                    label: "아이템 가격",
+                    label: DiscordUiText.ItemPriceLabel(language),
                     customId: ReceiptInteractionCustomIds.ItemPriceInputCustomId,
                     style: TextInputStyle.Short,
                     required: true,
@@ -353,13 +357,13 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("정산자만 alcohol 아이템을 지정할 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyAlcohol(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
@@ -373,7 +377,7 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Alcohol, session, page);
+                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Alcohol, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
                 properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Alcohol, page);
             });
 
@@ -386,38 +390,39 @@ public sealed class ReceiptInteractionService
     {
         if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
         {
-            await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+            await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
             return "session_not_found";
         }
 
         if (!IsOwner(session, component.User.Id))
         {
-            await component.RespondAsync("정산자만 아이템을 추가할 수 있습니다.", ephemeral: true);
+            await component.RespondAsync(DiscordUiText.OwnerOnlyAdd(GetLanguage(component.User.Id)), ephemeral: true);
             return "forbidden_user";
         }
 
+        var language = GetLanguage(component.User.Id);
         var modal = new ModalBuilder()
-            .WithTitle("아이템 추가")
+            .WithTitle(DiscordUiText.AddItemModalTitle(language))
             .WithCustomId($"{ReceiptInteractionCustomIds.AddItemModalPrefix}:{receiptId}")
             .AddTextInput(
-                label: "아이템 이름",
+                label: DiscordUiText.ItemNameLabel(language),
                 customId: ReceiptInteractionCustomIds.ItemNameInputCustomId,
                 style: TextInputStyle.Short,
                 required: true,
                 maxLength: 100)
             .AddTextInput(
-                label: "아이템 가격",
+                label: DiscordUiText.ItemPriceLabel(language),
                 customId: ReceiptInteractionCustomIds.ItemPriceInputCustomId,
                 style: TextInputStyle.Short,
                 required: true,
-                placeholder: "예: 12.50",
+                placeholder: DiscordUiText.ItemPricePlaceholder(language),
                 maxLength: 20)
             .AddTextInput(
-                label: "수량",
+                label: DiscordUiText.ItemQuantityLabel(language),
                 customId: ReceiptInteractionCustomIds.ItemQuantityInputCustomId,
                 style: TextInputStyle.Short,
                 required: false,
-                placeholder: "기본값 1",
+                placeholder: DiscordUiText.ItemQuantityPlaceholder(language),
                 value: "1",
                 maxLength: 2);
 
@@ -431,13 +436,13 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, modal.User.Id))
             {
-                await modal.RespondAsync("정산자만 아이템을 추가할 수 있습니다.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.OwnerOnlyAdd(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
@@ -447,13 +452,13 @@ public sealed class ReceiptInteractionService
 
             if (string.IsNullOrWhiteSpace(itemName))
             {
-                await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.InvalidItemName(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "invalid_item_name";
             }
 
             if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
             {
-                await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.InvalidItemPrice(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "invalid_item_price";
             }
 
@@ -461,7 +466,7 @@ public sealed class ReceiptInteractionService
             if (!string.IsNullOrWhiteSpace(itemQuantityText) &&
                 (!int.TryParse(itemQuantityText, out quantity) || quantity <= 0))
             {
-                await modal.RespondAsync("수량은 1 이상의 정수로 입력해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.InvalidItemQuantity(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "invalid_item_quantity";
             }
 
@@ -480,19 +485,19 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await modal.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, modal.User.Id))
             {
-                await modal.RespondAsync("정산자만 아이템을 수정할 수 있습니다.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.OwnerOnlyEdit(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
             if (!session.PendingEditItemIds.TryGetValue(editToken, out var itemId))
             {
-                await modal.RespondAsync("수정 대상 아이템 정보를 찾을 수 없습니다. 다시 시도해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.EditItemTokenMissing(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "edit_item_token_not_found";
             }
 
@@ -501,19 +506,19 @@ public sealed class ReceiptInteractionService
 
             if (string.IsNullOrWhiteSpace(itemName))
             {
-                await modal.RespondAsync("아이템 이름을 입력해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.InvalidItemName(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "invalid_item_name";
             }
 
             if (!decimal.TryParse(itemPriceText, out var itemPrice) || itemPrice < 0)
             {
-                await modal.RespondAsync("아이템 가격은 0 이상의 숫자로 입력해 주세요.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.InvalidItemPrice(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "invalid_item_price";
             }
 
             if (!ReceiptSessionStateService.UpdateItem(session, itemId, itemName.Trim(), itemPrice))
             {
-                await modal.RespondAsync("수정할 아이템을 찾을 수 없습니다.", ephemeral: true);
+                await modal.RespondAsync(DiscordUiText.EditItemNotFound(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "edit_item_not_found";
             }
 
@@ -523,7 +528,7 @@ public sealed class ReceiptInteractionService
             _debounceService.ScheduleRefresh(receiptId);
             await modal.ModifyOriginalResponseAsync(properties =>
             {
-                properties.Content = "아이템을 수정했습니다.";
+                properties.Content = DiscordUiText.ItemEdited(GetLanguage(modal.User.Id));
             });
 
             return "item_edited";
@@ -536,13 +541,13 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("confirm은 정산자만 누를 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyConfirm(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
@@ -616,7 +621,7 @@ public sealed class ReceiptInteractionService
 
         try
         {
-            await component.FollowupAsync("history등록에 실패했습니다.", ephemeral: true);
+            await component.FollowupAsync(DiscordUiText.HistorySaveFailed(GetLanguage(component.User.Id)), ephemeral: true);
         }
         catch (Exception followupEx)
         {
@@ -633,13 +638,13 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("세션 종료는 정산자만 할 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyCancel(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
@@ -668,19 +673,19 @@ public sealed class ReceiptInteractionService
         {
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await component.RespondAsync("해당 영수증 세션을 찾을 수 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), ephemeral: true);
                 return "session_not_found";
             }
 
             if (!IsOwner(session, component.User.Id))
             {
-                await component.RespondAsync("정산자만 tip 분배 방식을 바꿀 수 있습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.OwnerOnlyTipMode(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
 
             if ((session.Tip ?? 0m) <= 0m)
             {
-                await component.RespondAsync("이 영수증에는 tip이 없습니다.", ephemeral: true);
+                await component.RespondAsync(DiscordUiText.TipNotAvailable(GetLanguage(component.User.Id)), ephemeral: true);
                 return "tip_not_available";
             }
 
@@ -703,12 +708,13 @@ public sealed class ReceiptInteractionService
         var safePage = Math.Clamp(page, 0, ReceiptSessionStateService.GetTotalPages(session) - 1);
         var pageItems = ReceiptSessionStateService.GetPageItems(session, safePage);
         var builder = new ComponentBuilder();
+        var language = GetLanguage(userId);
 
         if (pageItems.Count > 0)
         {
             var selectMenu = new SelectMenuBuilder()
                 .WithCustomId(ReceiptInteractionCustomIds.BuildSelectMenuCustomId(mode, session.ReceiptId, safePage))
-                .WithPlaceholder(GetSelectPlaceholder(mode))
+                .WithPlaceholder(GetSelectPlaceholder(mode, language))
                 .WithMinValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? 0 : 1)
                 .WithMaxValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? Math.Max(1, pageItems.Count) : 1);
 
@@ -742,14 +748,14 @@ public sealed class ReceiptInteractionService
         if (totalPages > 1)
         {
             builder.WithButton(
-                "Previous Page",
+                DiscordUiText.PreviousPageButton(language),
                 ReceiptInteractionCustomIds.BuildPageButtonCustomId(mode, session.ReceiptId, safePage - 1),
                 ButtonStyle.Secondary,
                 disabled: safePage == 0,
                 row: 1);
 
             builder.WithButton(
-                "Next Page",
+                DiscordUiText.NextPageButton(language),
                 ReceiptInteractionCustomIds.BuildPageButtonCustomId(mode, session.ReceiptId, safePage + 1),
                 ButtonStyle.Secondary,
                 disabled: safePage >= totalPages - 1,
@@ -828,30 +834,29 @@ public sealed class ReceiptInteractionService
         return $"{mode}:{userId}";
     }
 
-    private static string BuildSelectionPrompt(ReceiptSelectionMode mode, ReceiptSessionState session, int page)
+    private static string BuildSelectionPrompt(ReceiptSelectionMode mode, int page, int totalPages, AppLanguage language)
     {
-        var totalPages = ReceiptSessionStateService.GetTotalPages(session);
         var safePage = Math.Clamp(page, 0, totalPages - 1);
 
         return mode switch
         {
-            ReceiptSelectionMode.Assign => $"아이템을 선택해서 정산에 참가하세요. (Page {safePage + 1}/{totalPages})",
-            ReceiptSelectionMode.Remove => $"제거할 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
-            ReceiptSelectionMode.Edit => $"수정할 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
-            ReceiptSelectionMode.Alcohol => $"alcohol 아이템을 선택하세요. (Page {safePage + 1}/{totalPages})",
-            _ => $"아이템을 선택하세요. (Page {safePage + 1}/{totalPages})"
+            ReceiptSelectionMode.Assign => DiscordUiText.AssignPrompt(language, safePage + 1, totalPages),
+            ReceiptSelectionMode.Remove => DiscordUiText.RemovePrompt(language, safePage + 1, totalPages),
+            ReceiptSelectionMode.Edit => DiscordUiText.EditPrompt(language, safePage + 1, totalPages),
+            ReceiptSelectionMode.Alcohol => DiscordUiText.AlcoholPrompt(language, safePage + 1, totalPages),
+            _ => DiscordUiText.AssignPrompt(language, safePage + 1, totalPages)
         };
     }
 
-    private static string GetSelectPlaceholder(ReceiptSelectionMode mode)
+    private static string GetSelectPlaceholder(ReceiptSelectionMode mode, AppLanguage language)
     {
         return mode switch
         {
-            ReceiptSelectionMode.Assign => "아이템 선택",
-            ReceiptSelectionMode.Remove => "제거할 아이템 선택",
-            ReceiptSelectionMode.Edit => "수정할 아이템 선택",
-            ReceiptSelectionMode.Alcohol => "alcohol 아이템 선택",
-            _ => "아이템 선택"
+            ReceiptSelectionMode.Assign => DiscordUiText.AssignPlaceholder(language),
+            ReceiptSelectionMode.Remove => DiscordUiText.RemovePlaceholder(language),
+            ReceiptSelectionMode.Edit => DiscordUiText.EditPlaceholder(language),
+            ReceiptSelectionMode.Alcohol => DiscordUiText.AlcoholPlaceholder(language),
+            _ => DiscordUiText.AssignPlaceholder(language)
         };
     }
 
@@ -894,5 +899,15 @@ public sealed class ReceiptInteractionService
         return string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(currency)
             ? $"${amount:0.00}"
             : $"{amount:0.00} {currency}";
+    }
+
+    private AppLanguage GetLanguage(ulong userId)
+    {
+        return _languagePreferenceStore.GetLanguage(userId.ToString());
+    }
+
+    private AppLanguage GetLanguage(string userId)
+    {
+        return _languagePreferenceStore.GetLanguage(userId);
     }
 }

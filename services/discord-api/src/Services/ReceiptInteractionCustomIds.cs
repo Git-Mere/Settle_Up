@@ -29,24 +29,25 @@ public static class ReceiptInteractionCustomIds
             return new ComponentBuilder().Build();
         }
 
+        var language = session.PublicLanguage;
         var builder = new ComponentBuilder()
-            .WithButton("Select Item", $"{SelectItemsButtonPrefix}:{session.ReceiptId}", ButtonStyle.Primary, row: 0)
-            .WithButton("Add item", $"{AddItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
-            .WithButton("Remove item", $"{RemoveItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
-            .WithButton("Edit item", $"{EditItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
-            .WithButton("Mark Alcohol", $"{MarkAlcoholButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0);
+            .WithButton(DiscordUiText.SelectItemButton(language), $"{SelectItemsButtonPrefix}:{session.ReceiptId}", ButtonStyle.Primary, row: 0)
+            .WithButton(DiscordUiText.AddItemButton(language), $"{AddItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
+            .WithButton(DiscordUiText.RemoveItemButton(language), $"{RemoveItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
+            .WithButton(DiscordUiText.EditItemButton(language), $"{EditItemButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0)
+            .WithButton(DiscordUiText.MarkAlcoholButton(language), $"{MarkAlcoholButtonPrefix}:{session.ReceiptId}", ButtonStyle.Secondary, row: 0);
 
         if ((session.Tip ?? 0m) > 0m)
         {
             builder
                 .WithButton(
-                    "Tip: Proportional",
+                    DiscordUiText.TipProportionalButton(language),
                     $"{TipModeProportionalButtonPrefix}:{session.ReceiptId}",
                     ButtonStyle.Secondary,
                     disabled: session.TipSplitMode == TipSplitMode.Proportional,
                     row: 1)
                 .WithButton(
-                    "Tip: Equal Split",
+                    DiscordUiText.TipEqualButton(language),
                     $"{TipModeEqualButtonPrefix}:{session.ReceiptId}",
                     ButtonStyle.Secondary,
                     disabled: session.TipSplitMode == TipSplitMode.Equal,
@@ -55,13 +56,13 @@ public static class ReceiptInteractionCustomIds
 
         return builder
             .WithButton(
-                "Confirm",
+                DiscordUiText.ConfirmButton(language),
                 $"{ConfirmButtonPrefix}:{session.ReceiptId}",
                 ButtonStyle.Success,
                 disabled: !ReceiptSessionStateService.CanConfirm(session),
                 row: 1)
             .WithButton(
-                "Cancel",
+                DiscordUiText.CancelButton(language),
                 $"{CancelButtonPrefix}:{session.ReceiptId}",
                 ButtonStyle.Danger,
                 row: 1)

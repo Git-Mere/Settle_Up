@@ -188,7 +188,7 @@ public sealed class ReceiptMainMessageService
         catch (Discord.Net.HttpException ex) when ((int?)ex.DiscordCode == 50001)
         {
             throw new InvalidOperationException(
-                $"메인 메시지 채널에 접근할 수 없습니다. ChannelId={restChannelId}",
+                $"Cannot access the main message channel. ChannelId={restChannelId}",
                 ex);
         }
     }

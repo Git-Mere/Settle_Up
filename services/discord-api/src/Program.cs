@@ -30,6 +30,7 @@ builder.Services.AddSingleton(new DiscordSocketConfig
 builder.Services.AddSingleton(sp => new DiscordSocketClient(sp.GetRequiredService<DiscordSocketConfig>()));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<BlobUploaderProvider>();
+builder.Services.AddSingleton<UserLanguagePreferenceStore>();
 builder.Services.Configure<SettlementHistoryOptions>(builder.Configuration.GetSection(SettlementHistoryOptions.SectionName));
 builder.Services.AddSingleton<ReceiptSessionStore>();
 builder.Services.AddSingleton<ReceiptSessionLockManager>();
@@ -42,6 +43,7 @@ builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
 builder.Services.AddSingleton<TestReceiptCommandHandler>();
+builder.Services.AddSingleton<LanguageCommandHandler>();
 builder.Services.AddSingleton<HistoryCommandHandler>();
 builder.Services.AddHostedService<DiscordBotWorker>();
 

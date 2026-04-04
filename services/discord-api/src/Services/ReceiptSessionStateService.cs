@@ -365,27 +365,27 @@ public static class ReceiptSessionStateService
 
         if (!session.IsDraftReady)
         {
-            return "영수증 분석이 아직 끝나지 않았습니다.";
+            return DiscordUiText.ConfirmBlockDraftNotReady(session.PublicLanguage);
         }
 
         if (session.IsConfirmed)
         {
-            return "이미 confirm된 영수증입니다.";
+            return DiscordUiText.ConfirmBlockAlreadyConfirmed(session.PublicLanguage);
         }
 
         if (session.Items.Count == 0)
         {
-            return "아이템이 없어 confirm할 수 없습니다.";
+            return DiscordUiText.ConfirmBlockNoItems(session.PublicLanguage);
         }
 
         if (GetUnassignedItems(session).Count > 0)
         {
-            return "Unassigned 아이템이 모두 배정되어야 confirm할 수 있습니다.";
+            return DiscordUiText.ConfirmBlockUnassigned(session.PublicLanguage);
         }
 
         if (RequiresAlcoholSelection(session) && !HasAlcoholItems(session))
         {
-            return "SST/SLT가 있는 영수증은 alcohol 아이템을 먼저 지정해야 합니다.";
+            return DiscordUiText.ConfirmBlockAlcohol(session.PublicLanguage);
         }
 
         return null;
