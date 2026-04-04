@@ -85,8 +85,8 @@ public static class DiscordUiText
     public static string UploadModalTitle(AppLanguage language) => language == AppLanguage.Korean ? "영수증 업로드" : "Upload Receipt";
     public static string UploadImageLabel(AppLanguage language) => language == AppLanguage.Korean ? "이미지 파일" : "Image File";
     public static string UploadImageDescription(AppLanguage language) => language == AppLanguage.Korean ? "jpg 또는 png 파일을 업로드해 주세요." : "Upload a jpg or png file.";
-    public static string PaymentContactLabel(AppLanguage language) => language == AppLanguage.Korean ? "계좌번호 / 전화번호 / 이메일(zelle) - 선택, 저장되지 않음" : "Bank account / phone / email (zelle) - optional, not stored";
-    public static string PaymentContactPlaceholder(AppLanguage language) => language == AppLanguage.Korean ? "예: 010-1234-5678 / example@email.com" : "Example: 555-123-4567 / example@email.com";
+    public static string PaymentContactLabel(AppLanguage language) => language == AppLanguage.Korean ? "정산 연락처" : "Payment Contact";
+    public static string PaymentContactPlaceholder(AppLanguage language) => language == AppLanguage.Korean ? "선택 입력, 예: 010-1234-5678 / example@email.com" : "Optional, e.g. 555-123-4567 / example@email.com";
 
     public static string InvalidButtonInfo(AppLanguage language) => language == AppLanguage.Korean ? "버튼 정보가 올바르지 않습니다. `/settle-up`을 다시 실행해 주세요." : "The button information is invalid. Run `/settle-up` again.";
     public static string ButtonOwnerOnly(AppLanguage language) => language == AppLanguage.Korean ? "이 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다." : "Only the user who ran the command can use this button.";
