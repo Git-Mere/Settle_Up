@@ -41,6 +41,7 @@ builder.Services.AddSingleton<ReceiptDraftSessionService>();
 builder.Services.AddSingleton<SettlementHistoryRepositoryProvider>();
 builder.Services.AddSingleton<ReceiptInteractionService>();
 builder.Services.AddSingleton<SettleUpCommandHandler>();
+builder.Services.AddSingleton<CustomReceiptCommandHandler>();
 builder.Services.AddSingleton<PingTestCommandHandler>();
 builder.Services.AddSingleton<TestReceiptCommandHandler>();
 builder.Services.AddSingleton<LanguageCommandHandler>();

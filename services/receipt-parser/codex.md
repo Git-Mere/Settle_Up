@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링" 상태다.
+이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링 + item-level discount 정규화" 상태다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -72,6 +72,14 @@
 - `DiscordApiDraftClient`는 실제 사용하지 않는 마지막 retry delay 항목을 제거했다.
 - `ReceiptProcessingService`의 sent/pending notification 문서 생성은 공통 helper로 정리했다.
 
+11. 할인 line 처리 정리
+- OCR 결과의 음수 금액 line은 일반 item으로 그대로 넘기지 않는다.
+- 우선 직전 일반 item에 item-level discount로 귀속을 시도한다.
+- 같은 item 아래 할인 line이 연속되면 같은 item에 누적한다.
+- 귀속 성공 item은 원가와 할인 금액을 함께 보존하도록 정규화한다.
+- 귀속 실패 할인은 downstream 계산과 UI에서 자동 반영하지 않는다.
+- 이 정책은 `docs/decisions/019-attribute-negative-receipt-lines-to-the-previous-item-and-ignore-unmatched-discounts.md`를 따른다.
+
 ## Current File Layout (relevant)
 ```text
 services/receipt-parser/
@@ -137,7 +145,10 @@ services/receipt-parser/
       "description": "Pizza",
       "quantity": 1,
       "unitPrice": 12.99,
-      "totalPrice": 12.99
+      "totalPrice": 12.99,
+      "originalUnitPrice": 12.99,
+      "originalTotalPrice": 12.99,
+      "discountAmount": 0
     }
   ],
   "parseMetadata": {
@@ -188,6 +199,8 @@ Cosmos 인증:
 1. Item-level 정확도
 - 현재 `Items` 파싱은 문서 필드 구조(`ValueList`/`ValueDictionary`) 기반 1차 매핑이다.
 - 실제 영수증 포맷별 정확도/정규화는 추가 검증이 필요하다.
+- 할인도 현재는 "직전 일반 item" 규칙만 사용한다.
+- OCR 순서가 흔들리거나 전역 할인인 경우 자동 귀속은 하지 않는다.
 
 2. 신뢰 경계 및 검증 강화
 - Event Grid payload 및 blob URL 검증 규칙을 더 엄격하게 정의할 필요가 있다.
@@ -201,12 +214,12 @@ Cosmos 인증:
 - 다국적 통화 처리 정책은 추가 정의가 필요하다.
 
 5. language command 후속 영향
-- 다음 세션에서 `discord-api`에 language command가 들어갈 가능성이 높다.
-- parser payload 필드 자체가 크게 바뀔 가능성은 낮지만, 공개/비공개 UI 문구와 downstream contract 설명 문서가 함께 갱신될 수 있다.
+- `discord-api`에 language command가 추가됐다.
+- parser payload 필드 자체는 localization과 직접 연결되지 않지만, downstream UI가 item-level discount 문구를 언어별로 렌더링할 수 있게 됐다.
 
 ## Next Codex Session Quick Start
-1. discord-api language command 작업 시 callback/UI 계약 영향 확인
-2. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 계속 안정적으로 들어가는지 재검증
+1. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 계속 안정적으로 들어가는지 재검증
+2. discount 귀속 실패가 실제 영수증에서 얼마나 나오는지 샘플로 확인
 3. discord-api callback 인증/검증 규칙 추가
 4. 전송 실패 문서 재처리 경로 설계
 5. 추가 리팩터링이 필요하면 parsing / persistence / delivery 경계를 유지한 채 진행
@@ -226,4 +239,5 @@ Cosmos 인증:
 - 실제 Azure 테스트에서 `uploadedByUserId` null로 callback이 실패하던 이슈를 확인했고, Blob path 추출 로직을 수정했다
 - 로컬과 Azure 둘 다 기준으로 callback 포함 전체 파이프라인 동작 확인됨
 - Cosmos lazy container init, blob download path simplification, notification document builder 정리까지 반영됨
-- next planned change: language-command 영향 확인 + callback auth/reprocessing + continued refactoring
+- item-level discount 정규화가 반영됐고, 귀속 실패 할인은 자동 반영하지 않는 정책으로 정리됨
+- next planned change: callback auth/reprocessing + continued refactoring

@@ -96,6 +96,9 @@ If making changes:
 - `receipt-parser` -> `discord-api` HTTP callback 경로는 계속 HTTP 기반이고, `/test`는 parser callback 이후 UI를 재현하는 shortcut 경로다. 핵심 세션 생성/갱신 로직은 둘 다 `ReceiptDraftSessionService`를 공유한다.
 - `receipt-parser`는 실제 Azure Blob URL 패턴 기준으로 `uploadedByUserId`를 다시 추출하도록 수정됐다. 따라서 blob URL 패턴을 다시 바꾸면 parser의 추출 규칙과 `discord-api` 계약을 함께 확인해야 한다.
 - `receipt-parser`도 현재 로컬과 Azure 둘 다에서 Event Grid -> Document Intelligence -> Cosmos -> discord-api callback 흐름이 다시 동작 확인된 상태다.
-- 다음 세션에서 유력한 기능 작업은 language command 추가다. 현재 후보 방향은 한국어/영어 선택이고, 공개 메시지와 private/ephemeral 메시지의 언어 범위를 어떻게 나눌지 정책 결정이 먼저 필요하다.
-- 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `discord-api`는 언어 전환 도입 전에 UI 문자열 분리 구조를 먼저 보는 게 좋다.
+- `discord-api`에는 이제 `/language`가 들어갔고, 한국어/영어 선택을 지원한다. 공개 receipt 메인 메시지는 owner 언어를 따르고, private/ephemeral/history는 호출 사용자 언어를 따른다.
+- 사용자 언어 설정은 메모리 기반이고 기본 언어는 English다. slash command 메타데이터와 로그/exception은 영어로 유지한다.
+- `discord-api`는 item-level discount를 지원한다. 할인 line은 우선 직전 일반 item에 귀속되고, 귀속 실패 할인은 자동 적용하지 않는다.
+- `discord-api`에는 `/custom`이 추가돼 parser 없이 빈 공개 check 메시지로 수동 정산을 시작할 수 있다.
+- 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `receipt-parser` callback 검증 강화와 discount 귀속 정확도 확인이 유력하다.
 - `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.

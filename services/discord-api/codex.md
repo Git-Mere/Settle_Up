@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리 + item-level discount 처리 + language 전환 + custom manual settlement entrypoint" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -100,6 +100,32 @@
 - 미사용 publish/helper 메서드와 미사용 계산 helper를 정리했다.
 - `/pingtest`, `/test`는 이제 Development 환경에서만 등록된다.
 
+16. item-level discount 처리
+- parser에서 온 음수 line item은 일반 item으로 그대로 노출하지 않는다.
+- 할인은 우선 직전 item에 귀속된 것으로 간주하고, item net amount와 `discountAmount`를 함께 사용한다.
+- check UI item 표시는 한 줄 요약 형태로 렌더링한다.
+- 예: `Protein Bar - $3.50 (discount -$1.00)`
+- 귀속 실패 할인은 현재 UI와 total 계산에서 적용하지 않는다.
+- 사용자 보정이 필요하면 owner가 `Edit item`으로 직접 수정한다.
+
+17. language 전환 추가
+- `/language` slash command를 추가했다.
+- 지원 언어는 English / Korean 두 가지다.
+- 사용자 언어 설정은 메모리 기반이고, 기본값은 English다.
+- private/ephemeral/history는 호출 사용자 언어를 따른다.
+- 공개 receipt 메인 메시지는 owner 언어를 따른다.
+- owner가 `/language`를 바꾸면 본인이 owner인 진행 중 공개 receipt 메시지를 즉시 refresh한다.
+- slash command 설명과 option 설명은 쉬운 영어로 등록한다.
+- 로그와 exception 메시지는 영어로 통일한다.
+
+18. `/custom` 수동 정산 시작점 추가
+- parser 없이 빈 receipt session을 바로 생성하는 `/custom` slash command를 추가했다.
+- `Seller Name`은 `Custom`, `Purchase Date`는 현재 날짜, `Buyer Name`은 명령 실행자다.
+- 초기 금액 header와 item 목록은 모두 비어 있고 0으로 시작한다.
+- optional `payment_contact` slash option을 받을 수 있다.
+- 공개 check 메시지를 바로 띄운 뒤 owner가 `Add item` 등 기존 조작 UI로 채워 넣는다.
+- item이 0개인 상태에서는 confirm이 불가능하고, item이 1개 이상이며 모두 배정됐을 때만 confirm 가능하다.
+
 ## Current File Layout (relevant)
 ```text
 services/discord-api/
@@ -109,10 +135,16 @@ services/discord-api/
 │  ├─ BlobUploaderProvider.cs
 │  ├─ DiscordApi.csproj
 │  ├─ Commands/
+│  │  ├─ CustomReceiptCommandHandler.cs
 │  │  ├─ HistoryCommandHandler.cs
+│  │  ├─ LanguageCommandHandler.cs
 │  │  ├─ PingTestCommandHandler.cs
 │  │  ├─ SettleUpCommandHandler.cs
 │  │  └─ TestReceiptCommandHandler.cs
+│  ├─ Localization/
+│  │  ├─ AppLanguage.cs
+│  │  ├─ DiscordUiText.cs
+│  │  └─ UserLanguagePreferenceStore.cs
 │  ├─ Models/
 │  │  ├─ ConfirmedSettlementHistoryDocument.cs
 │  │  └─ ReceiptDraftNotificationRequest.cs
@@ -126,7 +158,9 @@ services/discord-api/
 │  │  └─ BlobImageUploader.cs
 │  ├─ TestData/
 │  │  ├─ sample-receipt-draft-general-market.json
+│  │  ├─ sample-receipt-draft-discount-market.json
 │  │  ├─ sample-receipt-draft-liquor-tax-market.json
+│  │  ├─ sample-receipt-draft-stacked-discount-market.json
 │  │  └─ sample-receipt-draft-restaurant-tip.json
 │  └─ Observability/
 │     └─ Telemetry.cs
@@ -148,6 +182,7 @@ services/discord-api/
 4. 기존 receipt session/UI 생성 경로 재사용
 5. 현재 채널에 테스트 UI 전송
 6. 이 명령은 Development 환경에서만 등록된다.
+7. 현재 할인 검증용 scenario(`Discount Market`, `Stacked Discount Market`)도 포함한다.
 
 ### `/pingtest`
 - 즉시 ephemeral 응답: `pong! slash command 정상 작동 중입니다.`
@@ -167,6 +202,21 @@ services/discord-api/
   - 현재 사용자(owner)가 confirm한 최근 history를 최신순으로 보여준다.
 - `/history detail index:<번호>`
   - 현재 시점 기준 최신순 `index`번째 history 상세를 보여준다.
+
+### `/language`
+- 사용자는 `English` 또는 `Korean`을 선택할 수 있다.
+- 기본값은 English다.
+- private/ephemeral/history는 호출 사용자 언어를 따른다.
+- 공개 receipt 메인 메시지는 owner 언어를 따른다.
+- owner가 언어를 바꾸면 진행 중 공개 receipt 메시지도 함께 refresh된다.
+
+### `/custom`
+1. slash 실행
+2. optional `payment_contact`를 받는다.
+3. 빈 receipt session을 생성한다.
+4. 현재 채널에 공개 check 메시지를 바로 전송한다.
+5. owner가 `Add item` 등 기존 조작 UI로 수동 입력한다.
+6. item이 1개 이상이고 모두 배정됐을 때 confirm 가능하다.
 
 ## Environment Variables (currently used)
 필수/준필수:
@@ -203,9 +253,10 @@ services/discord-api/
 - `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 기본 callback endpoint 골격은 추가됐다.
 - `docs/decisions/012-serialize-receipt-session-updates-and-debounce-public-message-publishing`와 `013-use-session-scoped-in-memory-cache-for-discord-receipt-ui`는 현재 동시성/성능 최적화의 기준 문서다.
 - 현재 로컬과 Azure 둘 다 기준으로 receipt upload -> pending -> parser draft -> check -> confirm -> history 저장/조회까지 동작 확인이 끝났다.
-- 다음 유력 작업은 language command 추가다.
-- 현재 후보 방향은 한국어/영어 선택이고, 공개 메시지와 private/ephemeral 메시지의 언어 범위를 어떻게 나눌지 먼저 결정하는 것이 좋다.
-- 그 다음 축은 계속 리팩터링이다. 특히 언어 전환 전에 UI 문자열 분리 구조를 먼저 정리하면 다음 작업이 쉬워진다.
+- language command는 구현됐고, 현재 공개 메시지는 owner 언어 기준, private/ephemeral/history는 사용자 언어 기준으로 동작한다.
+- 공개 Discord 메시지는 사용자별로 다른 disabled 상태나 다른 언어를 줄 수 없다는 제약이 여전히 있다.
+- `/custom`은 parser 없이 빈 정산 세션을 여는 진입점으로 추가됐다.
+- 그 다음 축은 계속 리팩터링과 callback 검증 강화다.
 - shared observability project를 참조하므로 Dockerfile과 workflow는 repository-root build context를 기준으로 유지해야 한다.
 
 ## Known Decisions / Open Items
@@ -221,19 +272,23 @@ services/discord-api/
 3. `.env.example` 추적
 - `services/discord-api/.env.example` 파일은 존재하지만 현재 `.gitignore` 영향으로 git 추적되지 않음.
 
-4. UI language switching
-- 다음 유력 기능 작업이다.
-- 현재 예상 명령은 `/language`이고 한국어/영어 선택이 우선 후보다.
-- 공개 메시지(public embed/button text)와 private/ephemeral 문구에 같은 언어를 쓸지, 공개는 고정하고 private만 사용자별 설정을 적용할지 먼저 정해야 한다.
-- 현재는 구현하지 않았고, language 정책 결정 + UI 문자열 정리가 다음 세션 유력 작업이다.
+4. 공개 메시지의 per-user disable 불가
+- Discord 공개 메시지 버튼은 사용자별로 enabled/disabled 상태를 다르게 줄 수 없다.
+- owner 전용 버튼도 현재는 non-owner가 클릭 자체는 가능하고, 서버에서 권한 체크 후 ephemeral로 막는다.
+- 이 제약 때문에 공개 메시지 언어도 사용자별이 아니라 owner 기준 하나로 고정한다.
+
+5. UI language switching
+- `/language`는 구현 완료됐다.
+- 사용자 설정은 메모리 기반이라 재시작 시 초기화된다.
+- slash command 메타데이터는 사용자별 현지화를 하지 않고 쉬운 영어로 유지한다.
 
 ## Next Codex Session Quick Start
-1. language command 정책 결정
-2. UI 문자열을 언어 전환에 맞게 분리할 구조 설계
-3. `/getting_draft` 인증/검증 규칙 추가
-4. history / tax / tip UI를 언어 선택과 함께 어떻게 유지할지 확인
+1. `/getting_draft` 인증/검증 규칙 추가
+2. language 설정을 영구 저장해야 하는지 재검토
+3. `/custom` 사용 흐름에서 추가 편집 UX가 필요한지 확인
+4. discount 귀속 실패가 실제로 얼마나 나오는지 운영 샘플 확인
 5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
-6. 필요 시 `docs/decisions/012`, `013`, `015`, `016`, `017`, `018`을 먼저 확인하고 문서 업데이트는 `docs/decisions/README.md` 포맷을 따른다
+6. 필요 시 `docs/decisions/019`, `020`, `021` 포함 관련 ADR을 먼저 확인한다
 7. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 
@@ -252,3 +307,6 @@ services/discord-api/
 - owner 전용 `Cancel` 버튼으로 공개 메시지 + 열린 private panel + session cleanup 가능
 - cancel 시 `Discord 10008 Unknown Message` 오류는 재현 후 수정했고 현재 빌드 통과 상태
 - `/pingtest`, `/test`는 Development 환경에서만 등록되도록 변경됨
+- item-level discount와 stacked discount UI가 `/test` scenario로 확인 가능
+- `/language`와 owner-language public message 정책이 반영됨
+- `/custom`으로 parser 없이 빈 receipt 정산 세션 생성 가능

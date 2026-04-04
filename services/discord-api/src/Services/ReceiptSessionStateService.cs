@@ -23,6 +23,38 @@ public static class ReceiptSessionStateService
         };
     }
 
+    public static ReceiptSessionState CreateCustomSession(
+        string receiptId,
+        string uploadedByUserId,
+        string uploadedByDisplayName,
+        string? paymentContact,
+        AppLanguage publicLanguage,
+        DateTimeOffset? createdAtUtc = null)
+    {
+        var now = createdAtUtc ?? DateTimeOffset.UtcNow;
+
+        return new ReceiptSessionState
+        {
+            ReceiptId = receiptId,
+            MerchantName = "Custom",
+            UploadedByUserId = uploadedByUserId,
+            UploadedByDisplayName = uploadedByDisplayName,
+            PublicLanguage = publicLanguage,
+            PaymentContact = NormalizeOptionalText(paymentContact),
+            TransactionDate = DateOnly.FromDateTime(now.LocalDateTime),
+            Currency = "USD",
+            Subtotal = 0m,
+            Tax = 0m,
+            Sst = 0m,
+            Slt = 0m,
+            Tip = 0m,
+            Total = 0m,
+            IsDraftReady = true,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+    }
+
     public static ReceiptSessionState CreateSessionFromDraft(
         ReceiptDraftNotificationRequest payload,
         string uploadedByDisplayName,

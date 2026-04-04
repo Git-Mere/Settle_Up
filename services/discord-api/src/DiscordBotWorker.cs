@@ -13,6 +13,7 @@ sealed class DiscordBotWorker : IHostedService
     private readonly LanguageCommandHandler _languageHandler;
     private readonly HistoryCommandHandler _historyHandler;
     private readonly SettleUpCommandHandler _settleUpHandler;
+    private readonly CustomReceiptCommandHandler _customReceiptHandler;
     private readonly string? _token;
     private readonly string? _guildId;
     private readonly bool _enableDebugCommands;
@@ -27,6 +28,7 @@ sealed class DiscordBotWorker : IHostedService
         LanguageCommandHandler languageHandler,
         HistoryCommandHandler historyHandler,
         SettleUpCommandHandler settleUpHandler,
+        CustomReceiptCommandHandler customReceiptHandler,
         ReceiptInteractionService receiptInteractionService)
     {
         _client = client;
@@ -36,6 +38,7 @@ sealed class DiscordBotWorker : IHostedService
         _languageHandler = languageHandler;
         _historyHandler = historyHandler;
         _settleUpHandler = settleUpHandler;
+        _customReceiptHandler = customReceiptHandler;
         _receiptInteractionService = receiptInteractionService;
         _token = Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
         _guildId = Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
@@ -105,6 +108,7 @@ sealed class DiscordBotWorker : IHostedService
         var commands = new List<ApplicationCommandProperties>
         {
             SettleUpCommandHandler.BuildCommand(),
+            CustomReceiptCommandHandler.BuildCommand(),
             LanguageCommandHandler.BuildCommand(),
             HistoryCommandHandler.BuildCommand()
         };
@@ -162,6 +166,10 @@ sealed class DiscordBotWorker : IHostedService
             if (string.Equals(command.Data.Name, SettleUpCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
             {
                 status = await _settleUpHandler.HandleSlashCommandAsync(command);
+            }
+            else if (string.Equals(command.Data.Name, CustomReceiptCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))
+            {
+                status = await _customReceiptHandler.HandleSlashCommandAsync(command);
             }
             else if (_enableDebugCommands &&
                      string.Equals(command.Data.Name, PingTestCommandHandler.CommandName, StringComparison.OrdinalIgnoreCase))

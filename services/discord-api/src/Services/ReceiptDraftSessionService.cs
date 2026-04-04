@@ -108,6 +108,43 @@ public sealed class ReceiptDraftSessionService
         }, cancellationToken);
     }
 
+    public async Task<ReceiptSessionState> CreateCustomSessionAsync(
+        string uploadedByUserId,
+        string uploadedByDisplayName,
+        string? paymentContact,
+        SocketSlashCommand command,
+        CancellationToken cancellationToken)
+    {
+        var receiptId = $"custom-{Guid.NewGuid():N}";
+        ReceiptSessionState? createdSession = null;
+
+        await _lockManager.ExecuteAsync(receiptId, async () =>
+        {
+            var session = ReceiptSessionStateService.CreateCustomSession(
+                receiptId,
+                uploadedByUserId,
+                uploadedByDisplayName,
+                paymentContact,
+                _languagePreferenceStore.GetLanguage(uploadedByUserId));
+
+            session.UserDisplayNames[uploadedByUserId] = uploadedByDisplayName;
+            session.MainChannel ??= _mainMessageService.ResolveSlashCommandChannel(command);
+
+            await _mainMessageService.SendToSlashCommandAsync(session, command);
+            _sessionStore.AddOrUpdate(session);
+            createdSession = session;
+
+            _logger.LogInformation(
+                "Custom receipt session created. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId}",
+                session.ReceiptId,
+                uploadedByUserId,
+                session.MainChannelId,
+                session.MainMessageId);
+        }, cancellationToken);
+
+        return createdSession ?? throw new InvalidOperationException("Custom session creation failed.");
+    }
+
     public Task CreateOrUpdateSessionFromDraftAsync(
         ReceiptDraftNotificationRequest payload,
         CancellationToken cancellationToken,

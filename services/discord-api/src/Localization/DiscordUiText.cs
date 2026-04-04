@@ -122,6 +122,9 @@ public static class DiscordUiText
         : $"Language set to {(selectedLanguage == AppLanguage.Korean ? "Korean" : "English")}.";
 
     public static string SessionNotFound(AppLanguage language) => language == AppLanguage.Korean ? "해당 영수증 세션을 찾을 수 없습니다." : "Could not find that receipt session.";
+    public static string CustomCommandDescription(AppLanguage language) => language == AppLanguage.Korean ? "직접 정산용 빈 영수증을 만듭니다." : "Create a blank receipt for manual settlement.";
+    public static string CustomPaymentContactDescription(AppLanguage language) => language == AppLanguage.Korean ? "송금 정보 - 선택" : "Payment contact - optional";
+    public static string CustomCommandError(AppLanguage language) => language == AppLanguage.Korean ? "커스텀 영수증 세션 생성 중 오류가 발생했습니다. 로그를 확인해 주세요." : "An error occurred while creating the custom receipt session. Check the logs.";
     public static string DraftNotReady(AppLanguage language) => language == AppLanguage.Korean ? "영수증 분석이 아직 끝나지 않았습니다." : "Receipt analysis is not finished yet.";
     public static string OwnerOnlyFeature(AppLanguage language) => language == AppLanguage.Korean ? "정산자만 이 기능을 사용할 수 있습니다." : "Only the owner can use this feature.";
     public static string OwnerOnlyRemove(AppLanguage language) => language == AppLanguage.Korean ? "정산자만 아이템을 제거할 수 있습니다." : "Only the owner can remove items.";
