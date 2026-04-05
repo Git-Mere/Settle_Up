@@ -573,6 +573,9 @@ public sealed class ReceiptInteractionService
                 _ = SaveHistoryInBackgroundAsync(component, historyDocument);
             }
 
+            _sessionStore.Remove(receiptId, out _);
+            _lockManager.Cleanup(receiptId);
+
             return "confirmed";
         });
     }
@@ -662,6 +665,7 @@ public sealed class ReceiptInteractionService
             }
 
             _sessionStore.Remove(receiptId, out _);
+            _lockManager.Cleanup(receiptId);
 
             return "cancelled";
         });

@@ -105,6 +105,7 @@ public sealed class ReceiptDraftSessionService
             }
 
             _sessionStore.Remove(receiptId, out _);
+            _lockManager.Cleanup(receiptId);
         }, cancellationToken);
     }
 
@@ -240,6 +241,12 @@ public sealed class ReceiptDraftSessionService
             }
 
             _sessionStore.AddOrUpdate(session, previousReceiptId, previousBlobUrl);
+
+            if (!string.IsNullOrWhiteSpace(previousReceiptId) &&
+                !string.Equals(previousReceiptId, session.ReceiptId, StringComparison.Ordinal))
+            {
+                _lockManager.Cleanup(previousReceiptId);
+            }
 
             _logger.LogInformation(
                 "Receipt session upserted from draft. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId} ItemCount={ItemCount}",
