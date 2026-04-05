@@ -43,8 +43,8 @@ public static class DiscordUiText
         : $"Confirmed at {confirmedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}";
 
     public static string HistoryListFooter(AppLanguage language) => language == AppLanguage.Korean
-        ? "상세 조회는 /history detail index:<번호> 를 사용하세요."
-        : "Use /history detail index:<number> for details.";
+        ? "상세 조회는 /history index:<번호> 를 사용하세요."
+        : "Use /history index:<number> for details.";
 
     public static string PurchaseLabel(AppLanguage language) => language == AppLanguage.Korean ? "구매" : "purchase";
     public static string ItemsLabel(AppLanguage language) => language == AppLanguage.Korean ? "아이템" : "Items";
@@ -105,11 +105,9 @@ public static class DiscordUiText
     public static string PingResponse(AppLanguage language) => language == AppLanguage.Korean ? "pong! slash command 정상 작동 중입니다." : "pong! The slash command is working normally.";
 
     public static string HistoryCommandDescription(AppLanguage language) => language == AppLanguage.Korean ? "최근 정산 기록을 조회합니다." : "View recent settlement history.";
-    public static string HistoryListDescription(AppLanguage language) => language == AppLanguage.Korean ? "최근 정산 기록 목록을 조회합니다." : "View a list of recent settlement history.";
-    public static string HistoryDetailDescription(AppLanguage language) => language == AppLanguage.Korean ? "현재 시점 기준 최신순 n번째 기록을 상세 조회합니다." : "View the details for the nth most recent history entry.";
-    public static string HistoryIndexDescription(AppLanguage language) => language == AppLanguage.Korean ? "현재 시점 기준 최신순 n번째 기록" : "The nth most recent history entry.";
+    public static string HistoryIndexDescription(AppLanguage language) => language == AppLanguage.Korean ? "비워 두면 목록, 넣으면 현재 기준 n번째 상세" : "Leave empty for the list, or set the nth current entry.";
     public static string HistoryStorageNotConfigured(AppLanguage language) => language == AppLanguage.Korean ? "history 저장소가 설정되지 않았습니다." : "History storage is not configured.";
-    public static string HistoryUsage(AppLanguage language) => language == AppLanguage.Korean ? "사용 방법: `/history list` 또는 `/history detail index:<번호>`" : "Usage: `/history list` or `/history detail index:<number>`";
+    public static string HistoryUsage(AppLanguage language) => language == AppLanguage.Korean ? "사용 방법: `/history` 또는 `/history index:<번호>`" : "Usage: `/history` or `/history index:<number>`";
     public static string HistoryIndexRequired(AppLanguage language) => language == AppLanguage.Korean ? "index 값이 필요합니다." : "The index value is required.";
     public static string HistoryIndexRange(AppLanguage language) => language == AppLanguage.Korean ? "index는 1부터 10 사이여야 합니다." : "The index must be between 1 and 10.";
     public static string HistoryNotFound(AppLanguage language, long index) => language == AppLanguage.Korean ? $"현재 {index}번째 기록을 찾을 수 없습니다." : $"Could not find the current #{index} history entry.";

@@ -86,7 +86,7 @@
 13. history 저장 / 조회 추가
 - confirm 시 settlement snapshot을 `discord-api`가 Cosmos에 저장한다.
 - confirm UX는 먼저 Discord 메시지를 확정하고, history 저장은 background에서 retry와 함께 처리한다.
-- `/history list`, `/history detail index:<번호>` slash command가 추가됐다.
+- `/history`, `/history index:<번호>` slash command가 추가됐다.
 - `index:1`은 현재 시점 기준 가장 최근 history다.
 
 14. 업로드 UX 정리
@@ -205,9 +205,9 @@ services/discord-api/
 7. Blob 업로드 성공 후 parser가 draft callback을 보내면 기존 pending 메시지를 draft check 메시지로 교체
 
 ### `/history`
-- `/history list`
+- `/history`
   - 현재 사용자(owner)가 confirm한 최근 history를 최신순으로 보여준다.
-- `/history detail index:<번호>`
+- `/history index:<번호>`
   - 현재 시점 기준 최신순 `index`번째 history 상세를 보여준다.
 
 ### `/language`
@@ -308,7 +308,7 @@ services/discord-api/
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release` 성공
 - Docker build succeeds only when repository-root build context is used so shared observability project is included
 - `/test` 기준 select/add/remove/edit/confirm 흐름과 private panel lifecycle 정리 확인
-- `/history list`, `/history detail index:<번호>` 동작 확인
+- `/history`, `/history index:<번호>` 동작 확인
 - tax/tip/alcohol UI와 history 저장/조회가 로컬과 Azure 둘 다에서 동작 확인됨
 - 공개 메인 메시지 수정 경로, 세션 직렬화, 1초 디바운스, 메시지 캐시, render context 캐시, retry 적용 상태
 - rendered embed cache와 history Cosmos container lazy initialization 리팩터링 반영

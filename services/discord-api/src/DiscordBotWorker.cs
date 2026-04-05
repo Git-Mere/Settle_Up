@@ -50,7 +50,6 @@ sealed class DiscordBotWorker : IHostedService
         _client.ButtonExecuted += HandleButtonExecutedAsync;
         _client.SelectMenuExecuted += HandleSelectMenuExecutedAsync;
         _client.ModalSubmitted += HandleModalSubmittedAsync;
-        _client.MessageReceived += HandleMessageReceivedAsync;
     }
 
     private readonly ReceiptInteractionService _receiptInteractionService;
@@ -308,21 +307,4 @@ sealed class DiscordBotWorker : IHostedService
         }
     }
 
-    private async Task HandleMessageReceivedAsync(SocketMessage message)
-    {
-        if (message.Author.IsBot)
-        {
-            return;
-        }
-
-        if (!string.Equals(message.Content.Trim(), "ping", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        using var activity = Telemetry.ActivitySource.StartActivity("discord.message.ping");
-        activity?.SetTag("discord.channel.id", message.Channel.Id.ToString());
-        await message.Channel.SendMessageAsync("pong");
-        _logger.LogInformation("Ping message handled. ChannelId={ChannelId} UserId={UserId}", message.Channel.Id, message.Author.Id);
-    }
 }

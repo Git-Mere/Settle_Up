@@ -91,7 +91,7 @@ If making changes:
 - `discord-api`의 private selection panel은 사용자+모드 기준으로 하나만 유지되며, confirm 시 열린 private panel 정리를 시도한다.
 - `discord-api` 기준 권한 모델은 현재 `Select item`은 참여자 누구나 가능하고, `Add item` / `Remove item` / `Edit item` / `Confirm`은 업로더(owner)만 가능하다.
 - `discord-api`는 현재 tax/tip 정책과 history 기능까지 포함한다. confirm은 먼저 Discord UI를 갱신하고, settlement history는 background에서 Cosmos에 저장하며 실패 시 retry 후 ephemeral 오류를 남긴다.
-- `discord-api`의 `/history`는 현재 `/history list`, `/history detail index:<번호>` 구조이고, `index:1`은 현재 시점 기준 가장 최근 history를 뜻한다.
+- `discord-api`의 `/history`는 현재 `/history` 또는 `/history index:<번호>` 구조이고, `index:1`은 현재 시점 기준 가장 최근 history를 뜻한다.
 - `discord-api`의 debug slash command(`/pingtest`, `/test`)는 이제 Development 환경에서만 등록된다. Azure Production에서는 보이지 않는 것이 정상이다.
 - `receipt-parser` -> `discord-api` HTTP callback 경로는 계속 HTTP 기반이고, `/test`는 parser callback 이후 UI를 재현하는 shortcut 경로다. 핵심 세션 생성/갱신 로직은 둘 다 `ReceiptDraftSessionService`를 공유한다.
 - `receipt-parser`는 실제 Azure Blob URL 패턴 기준으로 `uploadedByUserId`를 다시 추출하도록 수정됐다. 따라서 blob URL 패턴을 다시 바꾸면 parser의 추출 규칙과 `discord-api` 계약을 함께 확인해야 한다.

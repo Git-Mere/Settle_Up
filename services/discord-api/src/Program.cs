@@ -26,7 +26,7 @@ builder.Services.AddSettleUpObservability(
 
 builder.Services.AddSingleton(new DiscordSocketConfig
 {
-    GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent
+    GatewayIntents = GatewayIntents.Guilds
 });
 builder.Services.AddSingleton(sp => new DiscordSocketClient(sp.GetRequiredService<DiscordSocketConfig>()));
 builder.Services.AddHttpClient();
