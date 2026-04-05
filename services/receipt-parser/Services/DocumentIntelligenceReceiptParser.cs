@@ -17,6 +17,7 @@ public sealed class DocumentIntelligenceReceiptParser
     private readonly ILogger<DocumentIntelligenceReceiptParser> _logger;
     private readonly DocumentIntelligenceClient _documentClient;
     private readonly TokenCredential _defaultAzureCredential = new DefaultAzureCredential();
+    private readonly bool _usesDefaultAzureCredential;
 
     public DocumentIntelligenceReceiptParser(
         IOptions<ReceiptParserOptions> options,
@@ -31,9 +32,31 @@ public sealed class DocumentIntelligenceReceiptParser
         }
 
         var endpoint = new Uri(_options.DocumentIntelligenceEndpoint);
-        _documentClient = string.IsNullOrWhiteSpace(_options.DocumentIntelligenceApiKey)
+        _usesDefaultAzureCredential = string.IsNullOrWhiteSpace(_options.DocumentIntelligenceApiKey);
+        _documentClient = _usesDefaultAzureCredential
             ? new DocumentIntelligenceClient(endpoint, _defaultAzureCredential)
-            : new DocumentIntelligenceClient(endpoint, new AzureKeyCredential(_options.DocumentIntelligenceApiKey));
+            : new DocumentIntelligenceClient(endpoint, new AzureKeyCredential(_options.DocumentIntelligenceApiKey!));
+    }
+
+    public async Task WarmUpAsync(CancellationToken cancellationToken)
+    {
+        if (!_usesDefaultAzureCredential)
+        {
+            _logger.LogInformation("Document Intelligence warm-up skipped because API key authentication is configured.");
+            return;
+        }
+
+        _logger.LogInformation("Document Intelligence credential warm-up started.");
+
+        await _defaultAzureCredential.GetTokenAsync(
+            new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
+            cancellationToken);
+
+        await _defaultAzureCredential.GetTokenAsync(
+            new TokenRequestContext(["https://storage.azure.com/.default"]),
+            cancellationToken);
+
+        _logger.LogInformation("Document Intelligence credential warm-up completed.");
     }
 
     public async Task<ParsedReceiptResult> ParseFromBlobAsync(string blobUrl, CancellationToken cancellationToken)

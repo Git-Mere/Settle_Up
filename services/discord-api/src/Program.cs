@@ -47,6 +47,7 @@ builder.Services.AddSingleton<PingTestCommandHandler>();
 builder.Services.AddSingleton<TestReceiptCommandHandler>();
 builder.Services.AddSingleton<LanguageCommandHandler>();
 builder.Services.AddSingleton<HistoryCommandHandler>();
+builder.Services.AddHostedService<BlobUploaderWarmupService>();
 builder.Services.AddHostedService<DiscordBotWorker>();
 
 var app = builder.Build();

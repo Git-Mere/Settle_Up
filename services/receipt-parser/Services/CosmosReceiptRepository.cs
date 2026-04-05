@@ -72,6 +72,21 @@ public sealed class CosmosReceiptRepository
         _logger.LogInformation("Cosmos write completed. ReceiptId={ReceiptId}", document.Id);
     }
 
+    public async Task EnsureReadyAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "Cosmos repository warm-up started. DatabaseId={DatabaseId} ContainerId={ContainerId}",
+            _options.CosmosDatabaseId,
+            _options.CosmosContainerId);
+
+        await GetContainerAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Cosmos repository warm-up completed. DatabaseId={DatabaseId} ContainerId={ContainerId}",
+            _options.CosmosDatabaseId,
+            _options.CosmosContainerId);
+    }
+
     private async Task<Container> GetContainerAsync(CancellationToken cancellationToken)
     {
         if (cancellationToken == CancellationToken.None)

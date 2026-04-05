@@ -9,12 +9,16 @@ sealed class BlobImageUploader
     private readonly BlobContainerClient _containerClient;
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
+    private readonly Lazy<Task> _containerReadyTask;
 
     private BlobImageUploader(BlobContainerClient containerClient, HttpClient httpClient, ILogger logger)
     {
         _containerClient = containerClient;
         _httpClient = httpClient;
         _logger = logger;
+        _containerReadyTask = new Lazy<Task>(
+            () => EnsureContainerExistsCoreAsync(CancellationToken.None),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public static BlobImageUploader? CreateFromEnvironment(HttpClient httpClient, ILogger logger, out string error)
@@ -65,8 +69,7 @@ sealed class BlobImageUploader
             throw new InvalidOperationException("Only jpg/jpeg/png files can be uploaded.");
         }
 
-        _logger.LogInformation("Ensuring blob container exists. ContainerName={ContainerName}", _containerClient.Name);
-        await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await EnsureReadyAsync(cancellationToken);
 
         var blobName = $"{DateTime.UtcNow:yyyy/MM/dd}/{userId}/{Guid.NewGuid():N}{extension}";
         var blobClient = _containerClient.GetBlobClient(blobName);
@@ -91,6 +94,29 @@ sealed class BlobImageUploader
             ContainerName: _containerClient.Name,
             BlobName: blobName,
             BlobUri: blobClient.Uri.ToString());
+    }
+
+    public async Task EnsureReadyAsync(CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken == CancellationToken.None)
+        {
+            await _containerReadyTask.Value;
+            return;
+        }
+
+        if (_containerReadyTask.IsValueCreated)
+        {
+            await _containerReadyTask.Value.WaitAsync(cancellationToken);
+            return;
+        }
+
+        await EnsureContainerExistsCoreAsync(cancellationToken);
+    }
+
+    private async Task EnsureContainerExistsCoreAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Ensuring blob container exists. ContainerName={ContainerName}", _containerClient.Name);
+        await _containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
     }
 
     private static bool TryResolveImageMetadata(IAttachment attachment, out string extension, out string contentType)

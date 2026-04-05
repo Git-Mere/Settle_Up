@@ -24,6 +24,7 @@ builder.Services.AddSingleton<DocumentIntelligenceReceiptParser>();
 builder.Services.AddSingleton<CosmosReceiptRepository>();
 builder.Services.AddSingleton<DiscordApiDraftClient>();
 builder.Services.AddSingleton<ReceiptProcessingService>();
+builder.Services.AddHostedService<ParserWarmupService>();
 
 var serviceName = builder.Configuration["OTEL_SERVICE_NAME"] ?? "receipt-parser";
 var serviceVersion = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0";
