@@ -7,19 +7,13 @@ sealed class LanguageCommandHandler
     private const string LanguageOptionName = "language";
 
     private readonly UserLanguagePreferenceStore _languagePreferenceStore;
-    private readonly ReceiptSessionStore _sessionStore;
-    private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ILogger<LanguageCommandHandler> _logger;
 
     public LanguageCommandHandler(
         UserLanguagePreferenceStore languagePreferenceStore,
-        ReceiptSessionStore sessionStore,
-        ReceiptMainMessageService mainMessageService,
         ILogger<LanguageCommandHandler> logger)
     {
         _languagePreferenceStore = languagePreferenceStore;
-        _sessionStore = sessionStore;
-        _mainMessageService = mainMessageService;
         _logger = logger;
     }
 
@@ -50,26 +44,6 @@ sealed class LanguageCommandHandler
         }
 
         _languagePreferenceStore.SetLanguage(command.User.Id.ToString(), selectedLanguage);
-
-        foreach (var session in _sessionStore.GetAll()
-                     .Where(session => string.Equals(session.UploadedByUserId, command.User.Id.ToString(), StringComparison.Ordinal)))
-        {
-            session.PublicLanguage = selectedLanguage;
-            session.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            _sessionStore.AddOrUpdate(session);
-
-            if (session.MainMessageId is not null && !session.IsConfirmed)
-            {
-                try
-                {
-                    await _mainMessageService.RefreshAsync(session);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to refresh session after language update. ReceiptId={ReceiptId}", session.ReceiptId);
-                }
-            }
-        }
 
         await command.RespondAsync(
             DiscordUiText.LanguageUpdated(selectedLanguage, selectedLanguage),
