@@ -175,9 +175,10 @@ public sealed class ReceiptDraftSessionService
         var uploadedByUserId = payload.UploadedByUserId
             ?? throw new InvalidOperationException("uploadedByUserId is required.");
 
-        var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId);
+        var existingSession = FindExistingSession(payload, receiptId, out _, out _);
+        var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId, existingSession);
         var publicLanguage = _languagePreferenceStore.GetLanguage(uploadedByUserId);
-        var lockKey = ResolveLockKey(payload, receiptId);
+        var lockKey = existingSession?.ReceiptId ?? receiptId;
 
         await _lockManager.ExecuteAsync(lockKey, async () =>
         {
@@ -278,7 +279,29 @@ public sealed class ReceiptDraftSessionService
         return null;
     }
 
-    private async Task<string> ResolveUploadedByDisplayNameAsync(string uploadedByUserId)
+    private async Task<string> ResolveUploadedByDisplayNameAsync(
+        string uploadedByUserId,
+        ReceiptSessionState? existingSession)
+    {
+        if (existingSession is not null)
+        {
+            if (string.Equals(existingSession.UploadedByUserId, uploadedByUserId, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(existingSession.UploadedByDisplayName))
+            {
+                return existingSession.UploadedByDisplayName;
+            }
+
+            if (existingSession.UserDisplayNames.TryGetValue(uploadedByUserId, out var cachedDisplayName) &&
+                !string.IsNullOrWhiteSpace(cachedDisplayName))
+            {
+                return cachedDisplayName;
+            }
+        }
+
+        return await ResolveUploadedByDisplayNameFromDiscordAsync(uploadedByUserId);
+    }
+
+    private async Task<string> ResolveUploadedByDisplayNameFromDiscordAsync(string uploadedByUserId)
     {
         if (!ulong.TryParse(uploadedByUserId, out var userId))
         {
@@ -292,12 +315,6 @@ public sealed class ReceiptDraftSessionService
         }
 
         return user.GlobalName ?? user.Username;
-    }
-
-    private string ResolveLockKey(ReceiptDraftNotificationRequest payload, string receiptId)
-    {
-        var existingSession = FindExistingSession(payload, receiptId, out _, out _);
-        return existingSession?.ReceiptId ?? receiptId;
     }
 
     private static ReceiptSessionState CreateMainMessageSnapshot(ReceiptSessionState session)
