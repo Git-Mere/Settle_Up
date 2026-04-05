@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링 + item-level discount 정규화" 상태다.
+이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링 + item-level discount 정규화 + startup warm-up" 상태다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -79,6 +79,13 @@
 - 귀속 성공 item은 원가와 할인 금액을 함께 보존하도록 정규화한다.
 - 귀속 실패 할인은 downstream 계산과 UI에서 자동 반영하지 않는다.
 - 이 정책은 `docs/decisions/019-attribute-negative-receipt-lines-to-the-previous-item-and-ignore-unmatched-discounts.md`를 따른다.
+
+12. 최근 성능 정리
+- startup 시 `ParserWarmupService`가 parser warm-up을 수행한다.
+- Azure AD 인증 경로를 쓸 때 `DocumentIntelligenceReceiptParser`는 Document Intelligence와 Storage scope token을 미리 받아 first-hit 지연을 줄인다.
+- `CosmosReceiptRepository`는 startup warm-up에서 container initialization을 먼저 수행한다.
+- 이 변경의 목적은 첫 영수증 처리의 cold path를 줄이는 것이다.
+- 관련 조사 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
 
 ## Current File Layout (relevant)
 ```text
@@ -240,4 +247,5 @@ Cosmos 인증:
 - 로컬과 Azure 둘 다 기준으로 callback 포함 전체 파이프라인 동작 확인됨
 - Cosmos lazy container init, blob download path simplification, notification document builder 정리까지 반영됨
 - item-level discount 정규화가 반영됐고, 귀속 실패 할인은 자동 반영하지 않는 정책으로 정리됨
+- parser startup warm-up이 추가돼 first-hit latency를 줄이는 방향으로 정리됨
 - next planned change: callback auth/reprocessing + continued refactoring

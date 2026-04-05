@@ -98,8 +98,13 @@ If making changes:
 - `receipt-parser`도 현재 로컬과 Azure 둘 다에서 Event Grid -> Document Intelligence -> Cosmos -> discord-api callback 흐름이 다시 동작 확인된 상태다.
 - `discord-api`에는 이제 `/language`가 들어갔고, 한국어/영어 선택을 지원한다. 공개 receipt 메인 메시지는 owner 언어를 따르고, private/ephemeral/history는 호출 사용자 언어를 따른다.
 - 사용자 언어 설정은 메모리 기반이고 기본 언어는 English다. slash command 메타데이터와 로그/exception은 영어로 유지한다.
+- `/language`는 이제 기존에 열려 있는 공개 receipt 메시지를 refresh하지 않는다. 언어 변경 이후에 새로 생성되거나 새로 응답되는 UI부터 선택 언어를 적용한다.
 - `discord-api`는 item-level discount를 지원한다. 할인 line은 우선 직전 일반 item에 귀속되고, 귀속 실패 할인은 자동 적용하지 않는다.
 - `discord-api`에는 `/custom`이 추가돼 parser 없이 빈 공개 check 메시지로 수동 정산을 시작할 수 있다.
 - `discord-api`는 현재 `Currency == KRW`인 영수증의 일반 `Tax`를 포함세로 보고 계산과 UI에서 제외한다. 한국 영수증에서 tax 이중 과금을 막기 위한 정책이다.
+- 최근 성능 점검 결과 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 정리돼 있다. cold path 지연과 in-memory lifecycle 이슈를 볼 때 이 문서부터 확인한다.
+- `discord-api`는 startup 시 Blob uploader warm-up을 수행하고, pending -> draft 전환 시 업로더 표시 이름을 가능한 한 기존 세션 캐시에서 재사용한다.
+- `receipt-parser`는 startup 시 Document Intelligence 자격 증명과 Cosmos container warm-up을 수행해 첫 영수증 cold path를 줄이도록 정리됐다.
+- `discord-api`는 confirm 이후 in-memory receipt session과 session lock을 cleanup한다. confirmed 공개 메시지는 남지만, 세션 객체와 lock은 메모리에 계속 남지 않는다.
 - 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `receipt-parser` callback 검증 강화와 discount 귀속 정확도 확인이 유력하다.
 - `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.

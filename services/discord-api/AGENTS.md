@@ -90,6 +90,11 @@ If the service structure changes significantly, update:
 - debug command인 `/pingtest`, `/test`는 이제 Development 환경에서만 등록된다. Azure Production에서 안 보이는 것이 정상이다.
 - `/language`가 추가됐고, 지원 언어는 English / Korean 두 가지다. 공개 receipt 메인 메시지는 owner 언어를 따르고, private/ephemeral/history는 호출 사용자 언어를 따른다.
 - 사용자 언어 설정은 메모리 기반이라 봇 재시작 시 초기화된다. slash command 설명과 옵션 설명은 쉬운 영어로 유지한다.
+- `/language`는 기존 공개 receipt 메시지를 즉시 refresh하지 않는다. 언어 변경 이후에 새로 생성되거나 새로 응답되는 UI부터 새 언어를 사용한다.
 - item-level discount가 들어갔고, 할인은 우선 직전 일반 item에 귀속한다. 귀속 실패 할인은 자동 적용하지 않고 필요 시 owner가 `Edit item`으로 수동 수정한다.
 - `/custom`이 추가돼 parser 없이 빈 receipt check 메시지를 바로 시작할 수 있다. `payment_contact`는 optional slash option이고, item이 1개 이상이며 모두 배정됐을 때만 confirm 가능하다.
 - `Currency == KRW`인 draft는 일반 `Tax`를 포함세로 보고 `0`으로 정규화한다. 그래서 한국 영수증은 일반 tax header/section이 보이지 않고 정산에도 한 번 더 붙지 않는다.
+- 최근 성능 리팩터링으로 startup 시 `BlobUploaderWarmupService`가 Blob container readiness를 미리 준비한다. 업로드 hot path에서는 one-time readiness를 재사용한다.
+- parser draft publish 시 업로더 표시 이름은 기존 pending session의 `UploadedByDisplayName` 또는 `UserDisplayNames`를 우선 재사용하고, 없을 때만 Discord REST fallback을 사용한다.
+- confirm 이후에는 receipt session과 session lock을 메모리에서 cleanup한다. cancel과 pending session delete도 같은 cleanup 경로를 탄다.
+- 성능 점검 메모는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.

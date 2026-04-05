@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리 + item-level discount 처리 + language 전환 + custom manual settlement entrypoint" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리 + item-level discount 처리 + language 전환 + custom manual settlement entrypoint + cold path warm-up + confirm 후 session cleanup" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -114,7 +114,8 @@
 - 사용자 언어 설정은 메모리 기반이고, 기본값은 English다.
 - private/ephemeral/history는 호출 사용자 언어를 따른다.
 - 공개 receipt 메인 메시지는 owner 언어를 따른다.
-- owner가 `/language`를 바꾸면 본인이 owner인 진행 중 공개 receipt 메시지를 즉시 refresh한다.
+- `/language` 변경은 기존 공개 receipt 메시지를 즉시 refresh하지 않는다.
+- 언어 변경 이후에 새로 생성되거나 새로 응답되는 UI부터 선택 언어를 적용한다.
 - slash command 설명과 option 설명은 쉬운 영어로 등록한다.
 - 로그와 exception 메시지는 영어로 통일한다.
 
@@ -132,6 +133,14 @@
 - tax 값이 `0`이 되므로 check/confirmed UI의 일반 tax header와 tax 섹션도 함께 표시되지 않는다.
 - 현재 이 정책은 일반 tax에만 적용하고, `Tip`, `SST`, `SLT`는 그대로 둔다.
 - 관련 결정은 `docs/decisions/022-treat-general-tax-on-krw-receipts-as-tax-included.md`를 따른다.
+
+20. 최근 성능 / lifecycle 정리
+- `BlobImageUploader`는 업로드마다 container existence check를 직접 반복하지 않고, one-time readiness를 재사용한다.
+- startup 시 `BlobUploaderWarmupService`가 Blob container readiness를 미리 준비해 첫 업로드 cold path를 줄인다.
+- parser draft publish 직전 업로더 표시 이름은 기존 pending session에 있는 cached display name을 우선 재사용한다.
+- confirm 이후에는 공개 confirmed 메시지를 먼저 갱신한 뒤, in-memory receipt session과 session lock을 cleanup한다.
+- pending 임시 receipt id가 실제 draft receipt id로 교체될 때 예전 lock도 정리한다.
+- 관련 조사 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
 
 ## Current File Layout (relevant)
 ```text
@@ -215,7 +224,8 @@ services/discord-api/
 - 기본값은 English다.
 - private/ephemeral/history는 호출 사용자 언어를 따른다.
 - 공개 receipt 메인 메시지는 owner 언어를 따른다.
-- owner가 언어를 바꾸면 진행 중 공개 receipt 메시지도 함께 refresh된다.
+- 기존 공개 receipt 메시지는 언어 변경 시 그대로 유지된다.
+- 언어 변경 이후에 새로 생성되거나 새로 응답되는 UI부터 새 언어를 사용한다.
 
 ### `/custom`
 1. slash 실행
