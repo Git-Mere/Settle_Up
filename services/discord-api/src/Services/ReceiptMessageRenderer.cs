@@ -361,8 +361,8 @@ public static class ReceiptMessageRenderer
 
     private sealed class ReceiptRenderContext
     {
-        public required Dictionary<string, IReadOnlyList<string>> UsersByItemId { get; init; }
-        public required Dictionary<string, IReadOnlyList<ReceiptLineItemState>> ItemsByUserId { get; init; }
+        public required IReadOnlyDictionary<string, IReadOnlyList<string>> UsersByItemId { get; init; }
+        public required IReadOnlyDictionary<string, IReadOnlyList<ReceiptLineItemState>> ItemsByUserId { get; init; }
         public required IReadOnlyList<ReceiptLineItemState> UnassignedItems { get; init; }
         public required IReadOnlyList<ReceiptSettlementLine> SettlementLines { get; init; }
         public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> ParticipantItemShares { get; init; }
@@ -374,8 +374,8 @@ public static class ReceiptMessageRenderer
 
         public static ReceiptRenderContext Create(ReceiptSessionState session)
         {
-            var usersByItemId = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             var itemsByUserId = new Dictionary<string, List<ReceiptLineItemState>>(StringComparer.Ordinal);
+            var readOnlyUsersByItem = ReceiptSessionStateService.BuildUsersByItemId(session);
 
             foreach (var userSelection in session.UserSelections)
             {
@@ -388,14 +388,6 @@ public static class ReceiptMessageRenderer
                     }
 
                     selectedItems.Add(item);
-
-                    if (!usersByItemId.TryGetValue(item.Id, out var users))
-                    {
-                        users = new List<string>();
-                        usersByItemId[item.Id] = users;
-                    }
-
-                    users.Add(userSelection.Key);
                 }
 
                 if (selectedItems.Count > 0)
@@ -403,11 +395,6 @@ public static class ReceiptMessageRenderer
                     itemsByUserId[userSelection.Key] = selectedItems;
                 }
             }
-
-            var readOnlyUsersByItem = usersByItemId.ToDictionary(
-                pair => pair.Key,
-                pair => (IReadOnlyList<string>)pair.Value.OrderBy(userId => userId, StringComparer.Ordinal).ToArray(),
-                StringComparer.Ordinal);
 
             var readOnlyItemsByUser = itemsByUserId.ToDictionary(
                 pair => pair.Key,
@@ -432,7 +419,7 @@ public static class ReceiptMessageRenderer
             }
 
             var allocation = ReceiptAllocationService.Calculate(session);
-            var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(session);
+            var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(readOnlyUsersByItem, session.Items);
 
             var settlementLines = allocation.SettlementTotals
                 .Where(entry => entry.Value > 0)

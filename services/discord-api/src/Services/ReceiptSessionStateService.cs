@@ -337,15 +337,37 @@ public static class ReceiptSessionStateService
         InvalidateRenderCache(session);
     }
 
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildUsersByItemId(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var usersByItemId = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var userSelection in session.UserSelections)
+        {
+            foreach (var itemId in userSelection.Value)
+            {
+                if (!usersByItemId.TryGetValue(itemId, out var users))
+                {
+                    users = new List<string>();
+                    usersByItemId[itemId] = users;
+                }
+
+                users.Add(userSelection.Key);
+            }
+        }
+
+        return usersByItemId.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<string>)pair.Value.OrderBy(userId => userId, StringComparer.Ordinal).ToArray(),
+            StringComparer.Ordinal);
+    }
+
     public static IReadOnlyList<string> GetUsersForItem(ReceiptSessionState session, string itemId)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return session.UserSelections
-            .Where(entry => entry.Value.Contains(itemId))
-            .Select(entry => entry.Key)
-            .OrderBy(userId => userId, StringComparer.Ordinal)
-            .ToArray();
+        return BuildUsersByItemId(session).GetValueOrDefault(itemId) ?? [];
     }
 
     public static IReadOnlyList<ReceiptLineItemState> GetItemsForUser(ReceiptSessionState session, string userId)
@@ -370,8 +392,10 @@ public static class ReceiptSessionStateService
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        var usersByItemId = BuildUsersByItemId(session);
+
         return session.Items
-            .Where(item => GetUsersForItem(session, item.Id).Count == 0)
+            .Where(item => !usersByItemId.ContainsKey(item.Id))
             .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Id, StringComparer.Ordinal)
             .ToArray();
@@ -414,7 +438,7 @@ public static class ReceiptSessionStateService
             return DiscordUiText.ConfirmBlockNoItems(session.PublicLanguage);
         }
 
-        if (GetUnassignedItems(session).Count > 0)
+        if (BuildUsersByItemId(session).Count < session.Items.Count)
         {
             return DiscordUiText.ConfirmBlockUnassigned(session.PublicLanguage);
         }

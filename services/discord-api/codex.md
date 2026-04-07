@@ -4,7 +4,7 @@
 - `discord-api`
 
 ## Session Summary (updated)
-이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리 + item-level discount 처리 + language 전환 + custom manual settlement entrypoint + cold path warm-up + confirm 후 session cleanup" 상태다.
+이번 세션까지의 `discord-api`는 "worker + HTTP receiver 통합 호스팅 + receipt draft UI + tax/tip settlement + history persistence/query + 공개 메인 메시지 수정 기반 전환 + 직렬화/디바운스/캐시 최적화 + check/confirm UX 정리 + item-level discount 처리 + language 전환 + custom manual settlement entrypoint + cold path warm-up + confirm 후 session cleanup + stale upload/pending/check session TTL cleanup" 상태다.
 
 1. 공통 observability bootstrap 적용
 - `shared/SettleUp.Observability`를 참조하도록 변경.
@@ -141,6 +141,13 @@
 - confirm 이후에는 공개 confirmed 메시지를 먼저 갱신한 뒤, in-memory receipt session과 session lock을 cleanup한다.
 - pending 임시 receipt id가 실제 draft receipt id로 교체될 때 예전 lock도 정리한다.
 - 관련 조사 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
+
+21. stale state TTL cleanup 추가
+- background hosted service인 `ReceiptSessionExpiryService`가 1분마다 stale state를 sweep한다.
+- abandoned upload prompt interaction은 15분 inactivity 후 정리한다.
+- draft ready가 아닌 pending receipt session은 15분 inactivity 후 공개 pending 메시지와 함께 정리한다.
+- draft ready 상태의 active check receipt session은 6시간 inactivity 후 공개 check 메시지와 함께 정리한다.
+- TTL 기준은 현재 `UpdatedAtUtc` 기반 inactivity다.
 
 ## Current File Layout (relevant)
 ```text

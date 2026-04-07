@@ -15,7 +15,7 @@ sealed class SettleUpCommandHandler
     private readonly ReceiptDraftSessionService _receiptDraftSessionService;
     private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<SettleUpCommandHandler> _logger;
-    private readonly ConcurrentDictionary<ulong, SocketMessageComponent> _uploadPromptInteractions = new();
+    private readonly ConcurrentDictionary<ulong, UploadPromptInteractionEntry> _uploadPromptInteractions = new();
 
     public SettleUpCommandHandler(
         BlobUploaderProvider blobUploaderProvider,
@@ -106,7 +106,7 @@ sealed class SettleUpCommandHandler
             .Build();
 
         await component.RespondWithModalAsync(modal);
-        _uploadPromptInteractions[component.User.Id] = component;
+        _uploadPromptInteractions[component.User.Id] = new UploadPromptInteractionEntry(component, DateTimeOffset.UtcNow);
         return "modal_opened";
     }
 
@@ -213,14 +213,14 @@ sealed class SettleUpCommandHandler
 
     private async Task TryDeleteUploadPromptAsync(ulong userId)
     {
-        if (!_uploadPromptInteractions.TryRemove(userId, out var interaction))
+        if (!_uploadPromptInteractions.TryRemove(userId, out var entry))
         {
             return;
         }
 
         try
         {
-            await interaction.DeleteOriginalResponseAsync();
+            await entry.Interaction.DeleteOriginalResponseAsync();
         }
         catch
         {
@@ -239,4 +239,21 @@ sealed class SettleUpCommandHandler
 
         return ulong.TryParse(tokens[1], out ownerId);
     }
+
+    public async Task CleanupExpiredUploadPromptsAsync(DateTimeOffset staleBeforeUtc)
+    {
+        foreach (var pair in _uploadPromptInteractions)
+        {
+            if (pair.Value.CreatedAtUtc > staleBeforeUtc)
+            {
+                continue;
+            }
+
+            await TryDeleteUploadPromptAsync(pair.Key);
+        }
+    }
+
+    private sealed record UploadPromptInteractionEntry(
+        SocketMessageComponent Interaction,
+        DateTimeOffset CreatedAtUtc);
 }

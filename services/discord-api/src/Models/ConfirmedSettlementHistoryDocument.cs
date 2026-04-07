@@ -90,6 +90,7 @@ public sealed class ConfirmedSettlementHistoryDocument
         }
 
         var allocation = ReceiptAllocationService.Calculate(session);
+        var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(session);
         var participants = allocation.ParticipantBreakdowns.Values
             .Where(participant => participant.Total > 0m)
             .OrderBy(participant => ReceiptSessionStateService.ResolveUserDisplayName(session, participant.UserId), StringComparer.OrdinalIgnoreCase)
@@ -102,7 +103,7 @@ public sealed class ConfirmedSettlementHistoryDocument
                 SstAmount = decimal.Round(participant.Sst, 2, MidpointRounding.AwayFromZero),
                 SltAmount = decimal.Round(participant.Slt, 2, MidpointRounding.AwayFromZero),
                 TipAmount = decimal.Round(participant.Tip, 2, MidpointRounding.AwayFromZero),
-                Items = BuildParticipantItems(session, participant.UserId)
+                Items = BuildParticipantItems(session, participant.UserId, participantItemShares)
             })
             .ToArray();
 
@@ -134,9 +135,11 @@ public sealed class ConfirmedSettlementHistoryDocument
         };
     }
 
-    private static IReadOnlyList<ConfirmedSettlementItemDocument> BuildParticipantItems(ReceiptSessionState session, string userId)
+    private static IReadOnlyList<ConfirmedSettlementItemDocument> BuildParticipantItems(
+        ReceiptSessionState session,
+        string userId,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> participantItemShares)
     {
-        var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(session);
         var itemSharesForUser = participantItemShares.GetValueOrDefault(userId);
 
         return ReceiptSessionStateService.GetItemsForUser(session, userId)

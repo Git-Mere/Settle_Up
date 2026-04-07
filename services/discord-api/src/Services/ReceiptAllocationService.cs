@@ -4,10 +4,7 @@ public static class ReceiptAllocationService
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var itemUsers = session.Items.ToDictionary(
-            item => item.Id,
-            item => ReceiptSessionStateService.GetUsersForItem(session, item.Id),
-            StringComparer.Ordinal);
+        var itemUsers = ReceiptSessionStateService.BuildUsersByItemId(session);
 
         var itemTaxAllocations = BuildItemTaxAllocations(session);
         var participantBreakdowns = new Dictionary<string, ParticipantReceiptBreakdown>(StringComparer.Ordinal);
@@ -67,12 +64,21 @@ public static class ReceiptAllocationService
     {
         ArgumentNullException.ThrowIfNull(session);
 
+        return CalculateParticipantItemShares(ReceiptSessionStateService.BuildUsersByItemId(session), session.Items);
+    }
+
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> CalculateParticipantItemShares(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> itemUsers,
+        IReadOnlyList<ReceiptLineItemState> items)
+    {
+        ArgumentNullException.ThrowIfNull(itemUsers);
+        ArgumentNullException.ThrowIfNull(items);
+
         var participantItemShares = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
 
-        foreach (var item in session.Items)
+        foreach (var item in items)
         {
-            var assignedUsers = ReceiptSessionStateService.GetUsersForItem(session, item.Id);
-            if (assignedUsers.Count == 0)
+            if (!itemUsers.TryGetValue(item.Id, out var assignedUsers) || assignedUsers.Count == 0)
             {
                 continue;
             }

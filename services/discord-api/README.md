@@ -31,6 +31,16 @@ Discord API 서비스입니다.
 - `http://0.0.0.0:5000`
 - 필요하면 `ASPNETCORE_URLS` 환경 변수로 오버라이드할 수 있습니다.
 
+## Session Lifetime
+
+이 서비스는 stale Discord UI/state를 자동 정리합니다.
+
+- abandoned upload prompt interaction: 15분 inactivity 후 정리
+- pending receipt session (`IsDraftReady == false`): 15분 inactivity 후 정리
+- active check receipt session (`IsDraftReady == true`, not confirmed): 6시간 inactivity 후 정리
+
+TTL cleanup 시 관련 공개 메시지와 in-memory session/lock도 함께 정리됩니다.
+
 ## Test Data
 
 - 테스트 draft JSON 위치: `services/discord-api/src/TestData/sample-receipt-draft.json`
