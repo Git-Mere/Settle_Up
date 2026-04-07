@@ -38,6 +38,7 @@ sealed class TestReceiptCommandHandler
                 .AddChoice("Discount Market", ReceiptDraftTestScenario.DiscountMarket)
                 .AddChoice("Stacked Discount Market", ReceiptDraftTestScenario.StackedDiscountMarket)
                 .AddChoice("Liquor Tax Market", ReceiptDraftTestScenario.LiquorTaxMarket)
+                .AddChoice("Shared Split Market", ReceiptDraftTestScenario.SharedSplitMarket)
                 .AddChoice("Restaurant Tip", ReceiptDraftTestScenario.RestaurantTip))
             .Build();
     }

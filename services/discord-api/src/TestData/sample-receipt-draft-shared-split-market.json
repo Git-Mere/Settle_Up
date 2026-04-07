@@ -1,0 +1,23 @@
+{
+  "draftId": "test-receipt-ui-001",
+  "blobUrl": "https://example.blob.core.windows.net/receipts/test-receipt-ui-001.png",
+  "status": "Parsed",
+  "uploadedByUserId": "0",
+  "merchantName": "Shared Split Market",
+  "transactionDate": "2026-04-07",
+  "currency": "USD",
+  "subtotal": 24.00,
+  "tax": 0.00,
+  "total": 24.00,
+  "items": [
+    { "id": "item-01", "description": "Pizza", "quantity": 1, "unitPrice": 18.00, "totalPrice": 18.00 },
+    { "id": "item-02", "description": "Soda", "quantity": 1, "unitPrice": 6.00, "totalPrice": 6.00 }
+  ],
+  "parseMetadata": {
+    "modelId": "prebuilt-receipt",
+    "merchantConfidence": 0.99,
+    "totalConfidence": 0.99
+  },
+  "createdAtUtc": "2026-04-07T20:00:00Z",
+  "updatedAtUtc": "2026-04-07T20:00:00Z"
+}

@@ -136,8 +136,17 @@ public sealed class ConfirmedSettlementHistoryDocument
 
     private static IReadOnlyList<ConfirmedSettlementItemDocument> BuildParticipantItems(ReceiptSessionState session, string userId)
     {
+        var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(session);
+        var itemSharesForUser = participantItemShares.GetValueOrDefault(userId);
+
         return ReceiptSessionStateService.GetItemsForUser(session, userId)
-            .GroupBy(item => new { item.GroupKey, item.GroupDisplayName, item.Amount, item.IsAlcohol })
+            .GroupBy(item => new
+            {
+                item.GroupKey,
+                item.GroupDisplayName,
+                Amount = itemSharesForUser?.GetValueOrDefault(item.Id) ?? 0m,
+                item.IsAlcohol
+            })
             .OrderBy(group => group.Key.GroupDisplayName, StringComparer.OrdinalIgnoreCase)
             .Select(group => new ConfirmedSettlementItemDocument
             {

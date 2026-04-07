@@ -63,6 +63,39 @@ public static class ReceiptAllocationService
             TipLines: tipLines);
     }
 
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> CalculateParticipantItemShares(ReceiptSessionState session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var participantItemShares = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
+
+        foreach (var item in session.Items)
+        {
+            var assignedUsers = ReceiptSessionStateService.GetUsersForItem(session, item.Id);
+            if (assignedUsers.Count == 0)
+            {
+                continue;
+            }
+
+            var perUserShares = SplitAmount(assignedUsers, item.Amount);
+            foreach (var pair in perUserShares)
+            {
+                if (!participantItemShares.TryGetValue(pair.Key, out var itemShares))
+                {
+                    itemShares = new Dictionary<string, decimal>(StringComparer.Ordinal);
+                    participantItemShares[pair.Key] = itemShares;
+                }
+
+                itemShares[item.Id] = pair.Value;
+            }
+        }
+
+        return participantItemShares.ToDictionary(
+            participant => participant.Key,
+            participant => (IReadOnlyDictionary<string, decimal>)participant.Value,
+            StringComparer.Ordinal);
+    }
+
     private static IReadOnlyDictionary<string, ReceiptItemTaxBreakdown> BuildItemTaxAllocations(ReceiptSessionState session)
     {
         var result = session.Items.ToDictionary(

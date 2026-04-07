@@ -295,7 +295,7 @@ public static class ReceiptMessageRenderer
                 userItems.Select(item => FormatItemSummary(
                     GetDisplayItemName(session, item),
                     item.IsAlcohol,
-                    item.Amount,
+                    renderContext.ParticipantItemShares.GetValueOrDefault(line.UserId)?.GetValueOrDefault(item.Id) ?? 0m,
                     item.DiscountAmount,
                     session.Currency)));
 
@@ -365,6 +365,7 @@ public static class ReceiptMessageRenderer
         public required Dictionary<string, IReadOnlyList<ReceiptLineItemState>> ItemsByUserId { get; init; }
         public required IReadOnlyList<ReceiptLineItemState> UnassignedItems { get; init; }
         public required IReadOnlyList<ReceiptSettlementLine> SettlementLines { get; init; }
+        public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> ParticipantItemShares { get; init; }
         public required decimal ItemsTotal { get; init; }
         public required IReadOnlyDictionary<string, ParticipantTaxLine> TaxLines { get; init; }
         public required IReadOnlyDictionary<string, decimal> TipLines { get; init; }
@@ -431,6 +432,7 @@ public static class ReceiptMessageRenderer
             }
 
             var allocation = ReceiptAllocationService.Calculate(session);
+            var participantItemShares = ReceiptAllocationService.CalculateParticipantItemShares(session);
 
             var settlementLines = allocation.SettlementTotals
                 .Where(entry => entry.Value > 0)
@@ -447,6 +449,7 @@ public static class ReceiptMessageRenderer
                 ItemsByUserId = readOnlyItemsByUser,
                 UnassignedItems = unassignedItems,
                 SettlementLines = settlementLines,
+                ParticipantItemShares = participantItemShares,
                 ItemsTotal = session.Items.Sum(item => item.Amount),
                 TaxLines = allocation.TaxLines,
                 TipLines = allocation.TipLines,

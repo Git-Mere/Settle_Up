@@ -69,6 +69,7 @@ public sealed class ReceiptDraftTestDataLoader
             ReceiptDraftTestScenario.DiscountMarket => "sample-receipt-draft-discount-market.json",
             ReceiptDraftTestScenario.StackedDiscountMarket => "sample-receipt-draft-stacked-discount-market.json",
             ReceiptDraftTestScenario.LiquorTaxMarket => "sample-receipt-draft-liquor-tax-market.json",
+            ReceiptDraftTestScenario.SharedSplitMarket => "sample-receipt-draft-shared-split-market.json",
             ReceiptDraftTestScenario.RestaurantTip => "sample-receipt-draft-restaurant-tip.json",
             _ => "sample-receipt-draft-general-market.json"
         };
@@ -81,5 +82,6 @@ public static class ReceiptDraftTestScenario
     public const string DiscountMarket = "discount-market";
     public const string StackedDiscountMarket = "stacked-discount-market";
     public const string LiquorTaxMarket = "liquor-tax-market";
+    public const string SharedSplitMarket = "shared-split-market";
     public const string RestaurantTip = "restaurant-tip";
 }
