@@ -148,56 +148,76 @@ public static class ReceiptMessageRenderer
 
     private static string BuildSharedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var lines = session.Items
-            .Select(item => new
-            {
-                Item = item,
-                Users = renderContext.UsersByItemId.GetValueOrDefault(item.Id) ?? []
-            })
-            .Where(entry => entry.Users.Count > 1)
-            .Select(entry =>
-            {
-                var users = entry.Users.Select(renderContext.ResolveUserDisplayName);
-                return $"• {FormatItemSummary(GetDisplayItemName(session, entry.Item), entry.Item.IsAlcohol, entry.Item.Amount, entry.Item.DiscountAmount, session.Currency)} | {string.Join(", ", users)}";
-            })
-            .ToArray();
+        var lines = new List<string>();
 
-        return lines.Length == 0 ? "• None" : string.Join('\n', lines);
+        foreach (var item in session.Items)
+        {
+            var users = renderContext.UsersByItemId.GetValueOrDefault(item.Id) ?? [];
+            if (users.Count <= 1)
+            {
+                continue;
+            }
+
+            var resolvedUsers = new string[users.Count];
+            for (var index = 0; index < users.Count; index++)
+            {
+                resolvedUsers[index] = renderContext.ResolveUserDisplayName(users[index]);
+            }
+
+            lines.Add(
+                $"• {FormatItemSummary(renderContext.ItemDisplayNames.GetValueOrDefault(item.Id) ?? item.GroupDisplayName, item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)} | {string.Join(", ", resolvedUsers)}");
+        }
+
+        return lines.Count == 0 ? "• None" : string.Join('\n', lines);
     }
 
     private static string BuildIndividualSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var userGroups = session.UserSelections
-            .OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase)
-            .Select(entry => new
-            {
-                UserId = entry.Key,
-                DisplayName = renderContext.ResolveUserDisplayName(entry.Key),
-                Items = renderContext.ItemsByUserId.GetValueOrDefault(entry.Key) ?? []
-            })
-            .Where(entry => entry.Items.Any(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1))
+        var orderedUsers = renderContext.ItemsByUserId.Keys
+            .OrderBy(renderContext.ResolveUserDisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (userGroups.Length == 0)
+        if (orderedUsers.Length == 0)
         {
             return "• None";
         }
 
         var sections = new List<string>();
-        foreach (var userGroup in userGroups)
+        foreach (var userId in orderedUsers)
         {
-            var individualTotal = userGroup.Items
-                .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1)
-                .Sum(item => item.Amount);
-            sections.Add($"{userGroup.DisplayName} - {FormatMoney(individualTotal, session.Currency)}");
+            var items = renderContext.ItemsByUserId.GetValueOrDefault(userId) ?? [];
+            var individualItems = new List<ReceiptLineItemState>();
+            var individualTotal = 0m;
 
-            foreach (var item in userGroup.Items
-                         .Where(item => (renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) == 1))
+            foreach (var item in items)
             {
-                sections.Add($"• {FormatItemSummary(GetDisplayItemName(session, item), item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}");
+                if ((renderContext.UsersByItemId.GetValueOrDefault(item.Id)?.Count ?? 0) != 1)
+                {
+                    continue;
+                }
+
+                individualItems.Add(item);
+                individualTotal += item.Amount;
+            }
+
+            if (individualItems.Count == 0)
+            {
+                continue;
+            }
+
+            sections.Add($"{renderContext.ResolveUserDisplayName(userId)} - {FormatMoney(individualTotal, session.Currency)}");
+
+            foreach (var item in individualItems)
+            {
+                sections.Add($"• {FormatItemSummary(renderContext.ItemDisplayNames.GetValueOrDefault(item.Id) ?? item.GroupDisplayName, item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}");
             }
 
             sections.Add(string.Empty);
+        }
+
+        if (sections.Count == 0)
+        {
+            return "• None";
         }
 
         while (sections.Count > 0 && string.IsNullOrWhiteSpace(sections[^1]))
@@ -210,51 +230,56 @@ public static class ReceiptMessageRenderer
 
     private static string BuildUnassignedSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var groups = renderContext.UnassignedItems
-            .Select(item => $"• {FormatItemSummary(GetDisplayItemName(session, item), item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}")
-            .ToArray();
+        if (renderContext.UnassignedItems.Count == 0)
+        {
+            return "• None";
+        }
 
-        return groups.Length == 0 ? "• None" : string.Join('\n', groups);
+        var groups = new List<string>(renderContext.UnassignedItems.Count);
+        foreach (var item in renderContext.UnassignedItems)
+        {
+            groups.Add($"• {FormatItemSummary(renderContext.ItemDisplayNames.GetValueOrDefault(item.Id) ?? item.GroupDisplayName, item.IsAlcohol, item.Amount, item.DiscountAmount, session.Currency)}");
+        }
+
+        return string.Join('\n', groups);
     }
 
     private static string BuildTaxSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var lines = renderContext.TaxLines
-            .OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase)
-            .Select(entry =>
+        var lines = new List<string>();
+        foreach (var entry in renderContext.TaxLines.OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase))
+        {
+            var line = entry.Value;
+            var parts = new List<string>(3);
+
+            if (line.GeneralTax > 0m)
             {
-                var line = entry.Value;
-                var parts = new List<string>();
+                parts.Add(FormatMoney(line.GeneralTax, session.Currency));
+            }
 
-                if (line.GeneralTax > 0m)
-                {
-                    parts.Add(FormatMoney(line.GeneralTax, session.Currency));
-                }
+            if (line.Sst > 0m)
+            {
+                parts.Add($"{FormatMoney(line.Sst, session.Currency)}(SST)");
+            }
 
-                if (line.Sst > 0m)
-                {
-                    parts.Add($"{FormatMoney(line.Sst, session.Currency)}(SST)");
-                }
+            if (line.Slt > 0m)
+            {
+                parts.Add($"{FormatMoney(line.Slt, session.Currency)}(SLT)");
+            }
 
-                if (line.Slt > 0m)
-                {
-                    parts.Add($"{FormatMoney(line.Slt, session.Currency)}(SLT)");
-                }
+            if (parts.Count == 0)
+            {
+                parts.Add(FormatMoney(0m, session.Currency));
+            }
 
-                if (parts.Count == 0)
-                {
-                    parts.Add(FormatMoney(0m, session.Currency));
-                }
+            var content = string.Join(" + ", parts);
+            if (parts.Count > 1)
+            {
+                content += $" = {FormatMoney(line.Total, session.Currency)}";
+            }
 
-                var content = string.Join(" + ", parts);
-                if (parts.Count > 1)
-                {
-                    content += $" = {FormatMoney(line.Total, session.Currency)}";
-                }
-
-                return $"{renderContext.ResolveUserDisplayName(entry.Key)} - {content}";
-            })
-            .ToList();
+            lines.Add($"{renderContext.ResolveUserDisplayName(entry.Key)} - {content}");
+        }
 
         if (renderContext.HasSpecialTaxWithoutAlcoholItems)
         {
@@ -266,12 +291,18 @@ public static class ReceiptMessageRenderer
 
     private static string BuildTipSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
     {
-        var lines = renderContext.TipLines
-            .OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase)
-            .Select(entry => $"{renderContext.ResolveUserDisplayName(entry.Key)} - {FormatMoney(entry.Value, session.Currency)}")
-            .ToArray();
+        if (renderContext.TipLines.Count == 0)
+        {
+            return "• None";
+        }
 
-        return lines.Length == 0 ? "• None" : string.Join('\n', lines);
+        var lines = new List<string>(renderContext.TipLines.Count);
+        foreach (var entry in renderContext.TipLines.OrderBy(entry => renderContext.ResolveUserDisplayName(entry.Key), StringComparer.OrdinalIgnoreCase))
+        {
+            lines.Add($"{renderContext.ResolveUserDisplayName(entry.Key)} - {FormatMoney(entry.Value, session.Currency)}");
+        }
+
+        return string.Join('\n', lines);
     }
 
     private static string BuildConfirmedSettlementSection(ReceiptSessionState session, ReceiptRenderContext renderContext)
@@ -290,14 +321,19 @@ public static class ReceiptMessageRenderer
                 continue;
             }
 
-            var itemSummary = string.Join(
-                ", ",
-                userItems.Select(item => FormatItemSummary(
-                    GetDisplayItemName(session, item),
+            var formattedItems = new string[userItems.Count];
+            for (var index = 0; index < userItems.Count; index++)
+            {
+                var item = userItems[index];
+                formattedItems[index] = FormatItemSummary(
+                    renderContext.ItemDisplayNames.GetValueOrDefault(item.Id) ?? item.GroupDisplayName,
                     item.IsAlcohol,
                     renderContext.ParticipantItemShares.GetValueOrDefault(line.UserId)?.GetValueOrDefault(item.Id) ?? 0m,
                     item.DiscountAmount,
-                    session.Currency)));
+                    session.Currency);
+            }
+
+            var itemSummary = string.Join(", ", formattedItems);
 
             sections.Add($"Items: {itemSummary}");
 
@@ -363,6 +399,7 @@ public static class ReceiptMessageRenderer
     {
         public required IReadOnlyDictionary<string, IReadOnlyList<string>> UsersByItemId { get; init; }
         public required IReadOnlyDictionary<string, IReadOnlyList<ReceiptLineItemState>> ItemsByUserId { get; init; }
+        public required IReadOnlyDictionary<string, string> ItemDisplayNames { get; init; }
         public required IReadOnlyList<ReceiptLineItemState> UnassignedItems { get; init; }
         public required IReadOnlyList<ReceiptSettlementLine> SettlementLines { get; init; }
         public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> ParticipantItemShares { get; init; }
@@ -376,34 +413,36 @@ public static class ReceiptMessageRenderer
         {
             var itemsByUserId = new Dictionary<string, List<ReceiptLineItemState>>(StringComparer.Ordinal);
             var readOnlyUsersByItem = ReceiptSessionStateService.BuildUsersByItemId(session);
+            var itemDisplayNames = BuildItemDisplayNames(session);
+            var unassignedItems = new List<ReceiptLineItemState>();
 
-            foreach (var userSelection in session.UserSelections)
+            foreach (var item in session.Items)
             {
-                var selectedItems = new List<ReceiptLineItemState>();
-                foreach (var item in session.Items)
+                if (!readOnlyUsersByItem.TryGetValue(item.Id, out var assignedUsers) || assignedUsers.Count == 0)
                 {
-                    if (!userSelection.Value.Contains(item.Id))
+                    unassignedItems.Add(item);
+                    continue;
+                }
+
+                foreach (var userId in assignedUsers)
+                {
+                    if (!itemsByUserId.TryGetValue(userId, out var selectedItems))
                     {
-                        continue;
+                        selectedItems = new List<ReceiptLineItemState>();
+                        itemsByUserId[userId] = selectedItems;
                     }
 
                     selectedItems.Add(item);
-                }
-
-                if (selectedItems.Count > 0)
-                {
-                    itemsByUserId[userSelection.Key] = selectedItems;
                 }
             }
 
             var readOnlyItemsByUser = itemsByUserId.ToDictionary(
                 pair => pair.Key,
-                pair => (IReadOnlyList<ReceiptLineItemState>)pair.Value,
+                pair => (IReadOnlyList<ReceiptLineItemState>)pair.Value
+                    .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.Id, StringComparer.Ordinal)
+                    .ToArray(),
                 StringComparer.Ordinal);
-
-            var unassignedItems = session.Items
-                .Where(item => !readOnlyUsersByItem.ContainsKey(item.Id))
-                .ToArray();
 
             var displayNameCache = new Dictionary<string, string>(StringComparer.Ordinal);
             string ResolveDisplayName(string userId)
@@ -434,6 +473,7 @@ public static class ReceiptMessageRenderer
             {
                 UsersByItemId = readOnlyUsersByItem,
                 ItemsByUserId = readOnlyItemsByUser,
+                ItemDisplayNames = itemDisplayNames,
                 UnassignedItems = unassignedItems,
                 SettlementLines = settlementLines,
                 ParticipantItemShares = participantItemShares,
@@ -444,6 +484,36 @@ public static class ReceiptMessageRenderer
                                                    !ReceiptSessionStateService.HasAlcoholItems(session),
                 ResolveUserDisplayName = ResolveDisplayName
             };
+        }
+
+        private static IReadOnlyDictionary<string, string> BuildItemDisplayNames(ReceiptSessionState session)
+        {
+            var duplicateCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var item in session.Items)
+            {
+                if (!duplicateCounts.TryAdd(item.GroupKey, 1))
+                {
+                    duplicateCounts[item.GroupKey]++;
+                }
+            }
+
+            var currentIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var result = new Dictionary<string, string>(session.Items.Count, StringComparer.Ordinal);
+
+            foreach (var item in session.Items)
+            {
+                if (duplicateCounts.GetValueOrDefault(item.GroupKey) <= 1)
+                {
+                    result[item.Id] = item.GroupDisplayName;
+                    continue;
+                }
+
+                var nextIndex = currentIndexes.GetValueOrDefault(item.GroupKey) + 1;
+                currentIndexes[item.GroupKey] = nextIndex;
+                result[item.Id] = $"{item.GroupDisplayName} #{nextIndex}";
+            }
+
+            return result;
         }
     }
 }
