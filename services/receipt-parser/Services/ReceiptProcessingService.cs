@@ -97,19 +97,11 @@ public sealed class ReceiptProcessingService
 
         try
         {
-            var deliveryResult = await _discordApiDraftClient.SendDraftAsync(payload, preferLocalTestUrl, cancellationToken);
-            var sentDocument = BuildNotificationSentDocument(document, deliveryResult.AttemptCount);
-            await _repository.SaveAsync(sentDocument, cancellationToken);
+            await _discordApiDraftClient.SendDraftAsync(payload, preferLocalTestUrl, cancellationToken);
             return payload;
         }
         catch (Exception ex)
         {
-            var failedDocument = BuildNotificationPendingDocument(
-                document,
-                attemptCount: GetAttemptCount(ex),
-                errorMessage: ex.Message);
-
-            await _repository.SaveAsync(failedDocument, cancellationToken);
             _logger.LogError(ex, "Draft delivery failed. ReceiptId={ReceiptId}", document.Id);
             throw;
         }
@@ -198,8 +190,6 @@ public sealed class ReceiptProcessingService
             Total = total,
             Items = [.. parsed.Items],
             ParseMetadata = parsed.ParseMetadata,
-            NotificationStatus = NotificationStatuses.Pending,
-            NotificationAttemptCount = 0,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -226,82 +216,5 @@ public sealed class ReceiptProcessingService
             ParseMetadata: document.ParseMetadata,
             CreatedAtUtc: document.CreatedAtUtc,
             UpdatedAtUtc: document.UpdatedAtUtc);
-    }
-
-    private static ReceiptDocument BuildNotificationSentDocument(ReceiptDocument document, int attemptCount)
-    {
-        var now = DateTimeOffset.UtcNow;
-        return BuildNotificationDocument(
-            document,
-            NotificationStatuses.Sent,
-            attemptCount,
-            now,
-            notificationSentAtUtc: now,
-            lastNotificationError: null);
-    }
-
-    private static ReceiptDocument BuildNotificationPendingDocument(
-        ReceiptDocument document,
-        int attemptCount,
-        string errorMessage)
-    {
-        var now = DateTimeOffset.UtcNow;
-        return BuildNotificationDocument(
-            document,
-            NotificationStatuses.Pending,
-            attemptCount,
-            now,
-            notificationSentAtUtc: null,
-            lastNotificationError: TruncateErrorMessage(errorMessage));
-    }
-
-    private static int GetAttemptCount(Exception ex)
-    {
-        return ex is DiscordApiDraftDeliveryException deliveryException
-            ? deliveryException.AttemptCount
-            : 0;
-    }
-
-    private static string TruncateErrorMessage(string errorMessage)
-    {
-        const int maxLength = 1024;
-        return errorMessage.Length <= maxLength
-            ? errorMessage
-            : errorMessage[..maxLength];
-    }
-
-    private static ReceiptDocument BuildNotificationDocument(
-        ReceiptDocument document,
-        string notificationStatus,
-        int attemptCount,
-        DateTimeOffset now,
-        DateTimeOffset? notificationSentAtUtc,
-        string? lastNotificationError)
-    {
-        return new ReceiptDocument
-        {
-            Id = document.Id,
-            Status = document.Status,
-            BlobUrl = document.BlobUrl,
-            UploadedByUserId = document.UploadedByUserId,
-            MerchantName = document.MerchantName,
-            TransactionDate = document.TransactionDate,
-            Currency = document.Currency,
-            Subtotal = document.Subtotal,
-            Tax = document.Tax,
-            Sst = document.Sst,
-            Slt = document.Slt,
-            Tip = document.Tip,
-            Total = document.Total,
-            Items = document.Items,
-            ParseMetadata = document.ParseMetadata,
-            NotificationStatus = notificationStatus,
-            NotificationAttemptCount = attemptCount,
-            LastNotificationAttemptAt = now,
-            NotificationSentAtUtc = notificationSentAtUtc,
-            LastNotificationError = lastNotificationError,
-            CreatedAtUtc = document.CreatedAtUtc,
-            UpdatedAtUtc = now
-        };
     }
 }

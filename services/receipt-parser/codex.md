@@ -4,7 +4,7 @@
 - `receipt-parser`
 
 ## Session Summary (updated)
-이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + delivery 상태 추적 + retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링 + item-level discount 정규화 + startup warm-up" 상태다.
+이번 세션까지의 `receipt-parser`는 "discord-api HTTP callback 전환 + immediate retry 추가 + 실제 Azure Blob URL 기준 `uploadedByUserId` 추출 수정 + persistence/parsing flow 리팩터링 + item-level discount 정규화 + startup warm-up + draft document single-write 단순화" 상태다.
 
 1. Blob 생성 이벤트 수신
 - 엔드포인트: `POST /api/events/blob-created`
@@ -23,7 +23,6 @@
 - 저장 문서는 아래 계약 필드를 따른다:
   - `id`, `status`, `blobUrl`, `uploadedByUserId`, `merchantName`, `transactionDate`
   - `currency`, `subtotal`, `tax`, `total`, `items`, `parseMetadata`
-  - `notificationStatus`, `notificationAttemptCount`, `lastNotificationAttemptAt`, `notificationSentAtUtc`, `lastNotificationError`
   - `createdAtUtc`, `updatedAtUtc`
 
 4. discord-api HTTP 전송
@@ -32,6 +31,7 @@
 - 저장 문서(`ReceiptDocument`)와 outbound payload(`DiscordDraftNotificationPayload`)는 분리했다.
 - retry는 최대 3회까지 수행하며, retryable 대상은 네트워크 오류/timeout/5xx/408/429다.
 - 400/401/403/404 등 non-transient 4xx는 재시도하지 않는다.
+- Cosmos에는 draft 본문을 1회만 저장하고, delivery 성공/실패 상태는 별도 upsert로 다시 기록하지 않는다.
 
 5. `uploadedByUserId` 추출 수정
 - 실제 Azure Blob URL 패턴은 `receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`이며, parser는 이제 이 경로에서 `userId`를 올바르게 추출한다.
@@ -120,18 +120,16 @@ services/receipt-parser/
 2. Blob 생성 이벤트가 Event Grid를 통해 `receipt-parser`로 전달
 3. `receipt-parser`가 이벤트에서 blob URL 추출
 4. Document Intelligence(`prebuilt-receipt`)로 분석 수행
-5. 결과를 내부 모델로 파싱하고 Cosmos DB에 `notificationStatus=Pending` 상태로 저장
+5. 결과를 내부 모델로 파싱하고 Cosmos DB에 draft document를 저장
 6. `receipt-parser`가 `discord-api`의 `/getting_draft`로 HTTP POST 전송
-7. 성공 시 Cosmos DB 문서를 `notificationStatus=Sent`로 업데이트
-8. 실패 시 pending 상태와 시도 횟수/오류를 남겨 재처리 가능하게 유지
+7. 실패 시 즉시 retry를 수행하고, 최종 실패는 로그와 예외로 남긴다
 
 로컬 테스트 플로우:
 1. `POST /api/tests/local-upload-parse`로 이미지 업로드
 2. `receipt-parser`가 Document Intelligence로 분석 수행
-3. Cosmos DB에 pending 상태로 저장
+3. Cosmos DB에 draft document를 저장
 4. `ReceiptParser__DiscordApiUrl_local_test`를 사용해 `discord-api`로 HTTP 전송
-5. 성공 시 sent 상태로 업데이트
-6. 동일한 outbound payload 스키마를 응답으로 반환
+5. 동일한 outbound payload 스키마를 응답으로 반환
 
 샘플 payload 형태:
 ```json
