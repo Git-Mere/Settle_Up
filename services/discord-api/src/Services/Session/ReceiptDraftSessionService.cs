@@ -170,14 +170,14 @@ public sealed class ReceiptDraftSessionService
             ?? throw new InvalidOperationException("uploadedByUserId is required.");
 
         var existingSession = FindExistingSession(payload, receiptId, out _, out _);
-        var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId, existingSession);
         var publicLanguage = _languagePreferenceStore.GetLanguage(uploadedByUserId);
         var lockKey = existingSession?.ReceiptId ?? receiptId;
 
         await _lockManager.ExecuteAsync(lockKey, async () =>
         {
-            var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl)
-                ?? ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
+            var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl);
+            var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId, session);
+            session ??= ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
             var shouldReplacePendingMessage =
                 !string.IsNullOrWhiteSpace(previousReceiptId) &&
                 !string.Equals(previousReceiptId, receiptId, StringComparison.Ordinal) &&

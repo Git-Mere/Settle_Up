@@ -49,7 +49,7 @@ Discord API 서비스입니다.
 
 - abandoned upload prompt interaction: 15분 inactivity 후 정리
 - pending receipt session (`IsDraftReady == false`): 15분 inactivity 후 정리
-- active check receipt session (`IsDraftReady == true`, not confirmed): 6시간 inactivity 후 정리
+- active check receipt session (`IsDraftReady == true`, not confirmed): 3시간 inactivity 후 정리
 
 TTL cleanup 시 관련 공개 메시지와 in-memory session/lock도 함께 정리됩니다.
 

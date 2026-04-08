@@ -146,7 +146,7 @@
 - background hosted service인 `ReceiptSessionExpiryService`가 1분마다 stale state를 sweep한다.
 - abandoned upload prompt interaction은 15분 inactivity 후 정리한다.
 - draft ready가 아닌 pending receipt session은 15분 inactivity 후 공개 pending 메시지와 함께 정리한다.
-- draft ready 상태의 active check receipt session은 6시간 inactivity 후 공개 check 메시지와 함께 정리한다.
+- draft ready 상태의 active check receipt session은 3시간 inactivity 후 공개 check 메시지와 함께 정리한다.
 - TTL 기준은 현재 `UpdatedAtUtc` 기반 inactivity다.
 
 ## Current File Layout (relevant)

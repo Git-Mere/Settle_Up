@@ -2,7 +2,7 @@ sealed class ReceiptSessionExpiryService : BackgroundService
 {
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan PendingSessionTtl = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan ActiveSessionTtl = TimeSpan.FromHours(6);
+    private static readonly TimeSpan ActiveSessionTtl = TimeSpan.FromHours(3);
     private static readonly TimeSpan UploadPromptTtl = TimeSpan.FromMinutes(15);
 
     private readonly ReceiptSessionStore _sessionStore;
