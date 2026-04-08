@@ -3,26 +3,25 @@ using Discord.WebSocket;
 
 public sealed class ReceiptInteractionService
 {
-    private static readonly TimeSpan[] HistorySaveRetryDelays =
-    [
-        TimeSpan.FromMilliseconds(500),
-        TimeSpan.FromMilliseconds(1500)
-    ];
-
     private readonly ReceiptSessionStore _sessionStore;
     private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ReceiptMainMessageDebounceService _debounceService;
-    private readonly SettlementHistoryRepositoryProvider _settlementHistoryRepositoryProvider;
+    private readonly ReceiptPrivatePanelService _privatePanelService;
+    private readonly ReceiptSelectionPanelService _selectionPanelService;
+    private readonly ReceiptSessionLifetimeService _sessionLifetimeService;
+    private readonly SettlementHistoryPersistenceService _settlementHistoryPersistenceService;
     private readonly UserLanguagePreferenceStore _languagePreferenceStore;
-    private readonly ILogger<ReceiptInteractionService> _logger;
 
     public ReceiptInteractionService(
         ReceiptSessionStore sessionStore,
         ReceiptSessionLockManager lockManager,
         ReceiptMainMessageService mainMessageService,
         ReceiptMainMessageDebounceService debounceService,
-        SettlementHistoryRepositoryProvider settlementHistoryRepositoryProvider,
+        ReceiptPrivatePanelService privatePanelService,
+        ReceiptSelectionPanelService selectionPanelService,
+        ReceiptSessionLifetimeService sessionLifetimeService,
+        SettlementHistoryPersistenceService settlementHistoryPersistenceService,
         UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<ReceiptInteractionService> logger)
     {
@@ -30,9 +29,11 @@ public sealed class ReceiptInteractionService
         _lockManager = lockManager;
         _mainMessageService = mainMessageService;
         _debounceService = debounceService;
-        _settlementHistoryRepositoryProvider = settlementHistoryRepositoryProvider;
+        _privatePanelService = privatePanelService;
+        _selectionPanelService = selectionPanelService;
+        _sessionLifetimeService = sessionLifetimeService;
+        _settlementHistoryPersistenceService = settlementHistoryPersistenceService;
         _languagePreferenceStore = languagePreferenceStore;
-        _logger = logger;
     }
 
     public async Task<string?> HandleButtonAsync(SocketMessageComponent component)
@@ -185,22 +186,23 @@ public sealed class ReceiptInteractionService
     {
         return await _lockManager.ExecuteAsync(receiptId, async () =>
         {
+            var language = GetLanguage(component.User.Id);
             if (!_sessionStore.TryGet(receiptId, out var session) || session is null)
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.SessionNotFound(GetLanguage(component.User.Id)), null);
+                await _selectionPanelService.RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.SessionNotFound(language), null);
                 return "session_not_found";
             }
 
             if (!session.IsDraftReady && mode != ReceiptSelectionMode.Assign)
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.DraftNotReady(GetLanguage(component.User.Id)), null);
+                await _selectionPanelService.RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.DraftNotReady(language), null);
                 return "draft_not_ready";
             }
 
             if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit || mode == ReceiptSelectionMode.Alcohol) &&
                 !IsOwner(session, component.User.Id))
             {
-                await RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.OwnerOnlyFeature(GetLanguage(component.User.Id)), null);
+                await _selectionPanelService.RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.OwnerOnlyFeature(language), null);
                 return "forbidden_user";
             }
 
@@ -209,18 +211,19 @@ public sealed class ReceiptInteractionService
 
             if (!updateExistingMessage)
             {
-                await ReplaceExistingPrivatePanelAsync(session, component.User.Id, mode);
+                await _privatePanelService.ReplaceExistingPanelAsync(session, component.User.Id, mode);
             }
 
-            await RespondOrUpdateAsync(
+            var panel = _selectionPanelService.BuildPanel(session, component.User.Id.ToString(), mode, language, page);
+            await _selectionPanelService.RespondOrUpdateAsync(
                 component,
                 updateExistingMessage,
-                BuildSelectionPrompt(mode, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id)),
-                BuildSelectionComponents(session, component.User.Id.ToString(), mode, page));
+                panel.Content,
+                panel.Components);
 
             if (!updateExistingMessage)
             {
-                session.ActivePrivatePanelInteractions[BuildPrivatePanelKey(component.User.Id, mode)] = component;
+                _privatePanelService.RegisterPanel(session, component.User.Id, mode, component);
                 _sessionStore.AddOrUpdate(session);
             }
 
@@ -257,8 +260,14 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Assign, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
-                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Assign, page);
+                var panel = _selectionPanelService.BuildPanel(
+                    session,
+                    component.User.Id.ToString(),
+                    ReceiptSelectionMode.Assign,
+                    GetLanguage(component.User.Id),
+                    page);
+                properties.Content = panel.Content;
+                properties.Components = panel.Components;
             });
 
             _debounceService.ScheduleRefresh(receiptId);
@@ -294,8 +303,14 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Remove, nextPage, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
-                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Remove, nextPage);
+                var panel = _selectionPanelService.BuildPanel(
+                    session,
+                    component.User.Id.ToString(),
+                    ReceiptSelectionMode.Remove,
+                    GetLanguage(component.User.Id),
+                    nextPage);
+                properties.Content = panel.Content;
+                properties.Components = panel.Components;
             });
 
             _debounceService.ScheduleRefresh(receiptId);
@@ -377,8 +392,14 @@ public sealed class ReceiptInteractionService
 
             await component.UpdateAsync(properties =>
             {
-                properties.Content = BuildSelectionPrompt(ReceiptSelectionMode.Alcohol, page, ReceiptSessionStateService.GetTotalPages(session), GetLanguage(component.User.Id));
-                properties.Components = BuildSelectionComponents(session, component.User.Id.ToString(), ReceiptSelectionMode.Alcohol, page);
+                var panel = _selectionPanelService.BuildPanel(
+                    session,
+                    component.User.Id.ToString(),
+                    ReceiptSelectionMode.Alcohol,
+                    GetLanguage(component.User.Id),
+                    page);
+                properties.Content = panel.Content;
+                properties.Components = panel.Components;
             });
 
             _debounceService.ScheduleRefresh(receiptId);
@@ -559,80 +580,22 @@ public sealed class ReceiptInteractionService
             }
 
             await component.DeferAsync();
-            _debounceService.CancelRefresh(receiptId);
             session.IsConfirmed = true;
             session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
             session.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _sessionStore.AddOrUpdate(session);
             await _mainMessageService.RefreshAsync(session);
-            await ClosePrivatePanelsAsync(session);
 
-            if (_settlementHistoryRepositoryProvider.Repository is not null)
-            {
-                var historyDocument = ConfirmedSettlementHistoryDocument.FromSession(session);
-                _ = SaveHistoryInBackgroundAsync(component, historyDocument);
-            }
+            var historyDocument = ConfirmedSettlementHistoryDocument.FromSession(session);
+            _ = _settlementHistoryPersistenceService.SaveInBackgroundAsync(
+                component,
+                historyDocument,
+                DiscordUiText.HistorySaveFailed(GetLanguage(component.User.Id)));
 
-            _sessionStore.Remove(receiptId, out _);
-            _lockManager.Cleanup(receiptId);
+            await _sessionLifetimeService.CompleteSessionAsync(session);
 
             return "confirmed";
         });
-    }
-
-    private async Task SaveHistoryInBackgroundAsync(
-        SocketMessageComponent component,
-        ConfirmedSettlementHistoryDocument historyDocument)
-    {
-        var repository = _settlementHistoryRepositoryProvider.Repository;
-        if (repository is null)
-        {
-            return;
-        }
-
-        Exception? lastException = null;
-        for (var attempt = 1; attempt <= HistorySaveRetryDelays.Length + 1; attempt++)
-        {
-            try
-            {
-                await repository.SaveAsync(historyDocument);
-                return;
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-                _logger.LogWarning(
-                    ex,
-                    "Settlement history save failed. ReceiptId={ReceiptId} Attempt={Attempt}",
-                    historyDocument.ReceiptId,
-                    attempt);
-
-                if (attempt > HistorySaveRetryDelays.Length)
-                {
-                    break;
-                }
-
-                await Task.Delay(HistorySaveRetryDelays[attempt - 1]);
-            }
-        }
-
-        _logger.LogError(
-            lastException,
-            "Settlement history save exhausted retries. ReceiptId={ReceiptId} HistoryId={HistoryId}",
-            historyDocument.ReceiptId,
-            historyDocument.Id);
-
-        try
-        {
-            await component.FollowupAsync(DiscordUiText.HistorySaveFailed(GetLanguage(component.User.Id)), ephemeral: true);
-        }
-        catch (Exception followupEx)
-        {
-            _logger.LogWarning(
-                followupEx,
-                "Failed to send settlement history failure followup. ReceiptId={ReceiptId}",
-                historyDocument.ReceiptId);
-        }
     }
 
     private async Task<string> HandleCancelAsync(SocketMessageComponent component, string receiptId)
@@ -652,20 +615,7 @@ public sealed class ReceiptInteractionService
             }
 
             await component.DeferAsync(ephemeral: true);
-            _debounceService.CancelRefresh(receiptId);
-            await ClosePrivatePanelsAsync(session);
-
-            try
-            {
-                await _mainMessageService.DeleteAsync(session);
-            }
-            catch
-            {
-                // Ignore delete failures for already removed or stale main messages.
-            }
-
-            _sessionStore.Remove(receiptId, out _);
-            _lockManager.Cleanup(receiptId);
+            await _sessionLifetimeService.DiscardSessionAsync(session);
 
             return "cancelled";
         });
@@ -703,167 +653,6 @@ public sealed class ReceiptInteractionService
         });
     }
 
-    private MessageComponent BuildSelectionComponents(
-        ReceiptSessionState session,
-        string userId,
-        ReceiptSelectionMode mode,
-        int page)
-    {
-        var safePage = Math.Clamp(page, 0, ReceiptSessionStateService.GetTotalPages(session) - 1);
-        var pageItems = ReceiptSessionStateService.GetPageItems(session, safePage);
-        var builder = new ComponentBuilder();
-        var language = GetLanguage(userId);
-
-        if (pageItems.Count > 0)
-        {
-            var selectMenu = new SelectMenuBuilder()
-                .WithCustomId(ReceiptInteractionCustomIds.BuildSelectMenuCustomId(mode, session.ReceiptId, safePage))
-                .WithPlaceholder(GetSelectPlaceholder(mode, language))
-                .WithMinValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? 0 : 1)
-                .WithMaxValues(mode is ReceiptSelectionMode.Assign or ReceiptSelectionMode.Alcohol ? Math.Max(1, pageItems.Count) : 1);
-
-            var selectedIds = ReceiptSessionStateService.GetItemsForUser(session, userId)
-                .Select(item => item.Id)
-                .ToHashSet(StringComparer.Ordinal);
-            var selectedAlcoholIds = session.Items
-                .Where(item => item.IsAlcohol)
-                .Select(item => item.Id)
-                .ToHashSet(StringComparer.Ordinal);
-
-            foreach (var item in pageItems)
-            {
-                var displayName = GetSelectionDisplayName(session, item);
-                selectMenu.AddOption(
-                    label: $"{displayName}{(item.IsAlcohol ? " [Alcohol]" : string.Empty)}",
-                    value: item.Id,
-                    description: $"{FormatMoney(item.Amount, session.Currency)}",
-                    isDefault: mode switch
-                    {
-                        ReceiptSelectionMode.Assign => selectedIds.Contains(item.Id),
-                        ReceiptSelectionMode.Alcohol => selectedAlcoholIds.Contains(item.Id),
-                        _ => false
-                    });
-            }
-
-            builder.WithSelectMenu(selectMenu, row: 0);
-        }
-
-        var totalPages = ReceiptSessionStateService.GetTotalPages(session);
-        if (totalPages > 1)
-        {
-            builder.WithButton(
-                DiscordUiText.PreviousPageButton(language),
-                ReceiptInteractionCustomIds.BuildPageButtonCustomId(mode, session.ReceiptId, safePage - 1),
-                ButtonStyle.Secondary,
-                disabled: safePage == 0,
-                row: 1);
-
-            builder.WithButton(
-                DiscordUiText.NextPageButton(language),
-                ReceiptInteractionCustomIds.BuildPageButtonCustomId(mode, session.ReceiptId, safePage + 1),
-                ButtonStyle.Secondary,
-                disabled: safePage >= totalPages - 1,
-                row: 1);
-        }
-
-        return builder.Build();
-    }
-
-    private static async Task RespondOrUpdateAsync(
-        SocketMessageComponent component,
-        bool updateExistingMessage,
-        string content,
-        MessageComponent? components)
-    {
-        if (updateExistingMessage)
-        {
-            await component.UpdateAsync(properties =>
-            {
-                properties.Content = content;
-                properties.Components = components;
-            });
-            return;
-        }
-
-        await component.RespondAsync(content, components: components, ephemeral: true);
-    }
-
-    private static async Task ClosePrivatePanelsAsync(ReceiptSessionState session)
-    {
-        if (session.ActivePrivatePanelInteractions.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var interaction in session.ActivePrivatePanelInteractions.Values.Distinct().ToArray())
-        {
-            try
-            {
-                await interaction.DeleteOriginalResponseAsync();
-            }
-            catch
-            {
-                // Ignore cleanup failures for stale/expired interaction tokens.
-            }
-        }
-
-        session.ActivePrivatePanelInteractions.Clear();
-    }
-
-    private static async Task ReplaceExistingPrivatePanelAsync(
-        ReceiptSessionState session,
-        ulong userId,
-        ReceiptSelectionMode mode)
-    {
-        var key = BuildPrivatePanelKey(userId, mode);
-        if (!session.ActivePrivatePanelInteractions.TryGetValue(key, out var existingInteraction))
-        {
-            return;
-        }
-
-        try
-        {
-            await existingInteraction.DeleteOriginalResponseAsync();
-        }
-        catch
-        {
-            // Ignore cleanup failures for stale/expired interaction tokens.
-        }
-
-        session.ActivePrivatePanelInteractions.Remove(key);
-    }
-
-    private static string BuildPrivatePanelKey(ulong userId, ReceiptSelectionMode mode)
-    {
-        return $"{mode}:{userId}";
-    }
-
-    private static string BuildSelectionPrompt(ReceiptSelectionMode mode, int page, int totalPages, AppLanguage language)
-    {
-        var safePage = Math.Clamp(page, 0, totalPages - 1);
-
-        return mode switch
-        {
-            ReceiptSelectionMode.Assign => DiscordUiText.AssignPrompt(language, safePage + 1, totalPages),
-            ReceiptSelectionMode.Remove => DiscordUiText.RemovePrompt(language, safePage + 1, totalPages),
-            ReceiptSelectionMode.Edit => DiscordUiText.EditPrompt(language, safePage + 1, totalPages),
-            ReceiptSelectionMode.Alcohol => DiscordUiText.AlcoholPrompt(language, safePage + 1, totalPages),
-            _ => DiscordUiText.AssignPrompt(language, safePage + 1, totalPages)
-        };
-    }
-
-    private static string GetSelectPlaceholder(ReceiptSelectionMode mode, AppLanguage language)
-    {
-        return mode switch
-        {
-            ReceiptSelectionMode.Assign => DiscordUiText.AssignPlaceholder(language),
-            ReceiptSelectionMode.Remove => DiscordUiText.RemovePlaceholder(language),
-            ReceiptSelectionMode.Edit => DiscordUiText.EditPlaceholder(language),
-            ReceiptSelectionMode.Alcohol => DiscordUiText.AlcoholPlaceholder(language),
-            _ => DiscordUiText.AssignPlaceholder(language)
-        };
-    }
-
     private static bool IsOwner(ReceiptSessionState session, ulong userId)
     {
         return string.Equals(session.UploadedByUserId, userId.ToString(), StringComparison.Ordinal);
@@ -887,35 +676,6 @@ public sealed class ReceiptInteractionService
         var token = Guid.NewGuid().ToString("N")[..12];
         session.PendingEditItemIds[token] = itemId;
         return token;
-    }
-
-    private static int GetInstanceIndex(ReceiptSessionState session, ReceiptLineItemState item)
-    {
-        return session.Items
-            .Where(candidate => string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal))
-            .Select((candidate, index) => new { candidate.Id, Index = index + 1 })
-            .First(entry => string.Equals(entry.Id, item.Id, StringComparison.Ordinal))
-            .Index;
-    }
-
-    private static string GetSelectionDisplayName(ReceiptSessionState session, ReceiptLineItemState item)
-    {
-        var duplicateCount = session.Items.Count(candidate =>
-            string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.Ordinal));
-
-        if (duplicateCount <= 1)
-        {
-            return item.Name;
-        }
-
-        return $"{item.Name} #{GetInstanceIndex(session, item)}";
-    }
-
-    private static string FormatMoney(decimal amount, string? currency)
-    {
-        return string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(currency)
-            ? $"${amount:0.00}"
-            : $"{amount:0.00} {currency}";
     }
 
     private AppLanguage GetLanguage(ulong userId)

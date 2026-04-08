@@ -7,6 +7,18 @@ Discord API 서비스입니다.
 - Discord 봇 워커 실행
 - HTTP endpoint 수신 (`POST /getting_draft`)
 
+## Service Structure
+
+`src/Services`는 현재 역할별 서브폴더로 나뉘어 있습니다.
+
+- `Blob/` : startup warm-up 등 Blob 관련 서비스
+- `Calculations/` : 영수증 정산 계산 로직
+- `History/` : settlement history 저장, 조회 렌더링, repository provider
+- `Interaction/` : Discord component interaction, main message, private panel, selection panel
+- `Rendering/` : 공개 receipt 메시지 렌더링
+- `Session/` : draft session 생성/업데이트, TTL cleanup, lifetime cleanup, lock/store/state helper
+- `Testing/` : `/test`용 draft fixture loader
+
 추가로 테스트용 slash command를 제공합니다.
 
 - `/test`

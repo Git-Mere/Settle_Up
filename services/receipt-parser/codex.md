@@ -100,6 +100,7 @@ services/receipt-parser/
 │  └─ EventGridWebhookEndpoint.cs
 ├─ Services/
 │  ├─ ReceiptProcessingService.cs
+│  ├─ ReceiptDraftFactory.cs
 │  ├─ DocumentIntelligenceReceiptParser.cs
 │  ├─ CosmosReceiptRepository.cs
 │  └─ DiscordApiDraftClient.cs

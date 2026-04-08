@@ -7,23 +7,20 @@ sealed class ReceiptSessionExpiryService : BackgroundService
 
     private readonly ReceiptSessionStore _sessionStore;
     private readonly ReceiptSessionLockManager _lockManager;
-    private readonly ReceiptMainMessageService _mainMessageService;
-    private readonly ReceiptMainMessageDebounceService _debounceService;
+    private readonly ReceiptSessionLifetimeService _sessionLifetimeService;
     private readonly SettleUpCommandHandler _settleUpCommandHandler;
     private readonly ILogger<ReceiptSessionExpiryService> _logger;
 
     public ReceiptSessionExpiryService(
         ReceiptSessionStore sessionStore,
         ReceiptSessionLockManager lockManager,
-        ReceiptMainMessageService mainMessageService,
-        ReceiptMainMessageDebounceService debounceService,
+        ReceiptSessionLifetimeService sessionLifetimeService,
         SettleUpCommandHandler settleUpCommandHandler,
         ILogger<ReceiptSessionExpiryService> logger)
     {
         _sessionStore = sessionStore;
         _lockManager = lockManager;
-        _mainMessageService = mainMessageService;
-        _debounceService = debounceService;
+        _sessionLifetimeService = sessionLifetimeService;
         _settleUpCommandHandler = settleUpCommandHandler;
         _logger = logger;
     }
@@ -98,23 +95,7 @@ sealed class ReceiptSessionExpiryService : BackgroundService
                 return;
             }
 
-            _debounceService.CancelRefresh(receiptId);
-            await ClosePrivatePanelsAsync(session);
-
-            try
-            {
-                await _mainMessageService.DeleteAsync(session, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to delete expired receipt main message. ReceiptId={ReceiptId}",
-                    receiptId);
-            }
-
-            _sessionStore.Remove(receiptId, out _);
-            _lockManager.Cleanup(receiptId);
+            await _sessionLifetimeService.DiscardSessionAsync(session, cancellationToken);
 
             _logger.LogInformation(
                 "Expired receipt session cleaned up. ReceiptId={ReceiptId} DraftReady={IsDraftReady} AgeMinutes={AgeMinutes}",
@@ -132,27 +113,5 @@ sealed class ReceiptSessionExpiryService : BackgroundService
         }
 
         return session.IsDraftReady ? ActiveSessionTtl : PendingSessionTtl;
-    }
-
-    private static async Task ClosePrivatePanelsAsync(ReceiptSessionState session)
-    {
-        if (session.ActivePrivatePanelInteractions.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var interaction in session.ActivePrivatePanelInteractions.Values.Distinct().ToArray())
-        {
-            try
-            {
-                await interaction.DeleteOriginalResponseAsync();
-            }
-            catch
-            {
-                // Ignore cleanup failures for stale or expired interaction tokens.
-            }
-        }
-
-        session.ActivePrivatePanelInteractions.Clear();
     }
 }

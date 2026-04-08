@@ -8,6 +8,7 @@ public sealed class ReceiptDraftSessionService
     private readonly ReceiptSessionLockManager _lockManager;
     private readonly ReceiptMainMessageService _mainMessageService;
     private readonly ReceiptMainMessageDebounceService _debounceService;
+    private readonly ReceiptSessionLifetimeService _sessionLifetimeService;
     private readonly UserLanguagePreferenceStore _languagePreferenceStore;
     private readonly ILogger<ReceiptDraftSessionService> _logger;
 
@@ -17,6 +18,7 @@ public sealed class ReceiptDraftSessionService
         ReceiptSessionLockManager lockManager,
         ReceiptMainMessageService mainMessageService,
         ReceiptMainMessageDebounceService debounceService,
+        ReceiptSessionLifetimeService sessionLifetimeService,
         UserLanguagePreferenceStore languagePreferenceStore,
         ILogger<ReceiptDraftSessionService> logger)
     {
@@ -25,6 +27,7 @@ public sealed class ReceiptDraftSessionService
         _lockManager = lockManager;
         _mainMessageService = mainMessageService;
         _debounceService = debounceService;
+        _sessionLifetimeService = sessionLifetimeService;
         _languagePreferenceStore = languagePreferenceStore;
         _logger = logger;
     }
@@ -95,17 +98,7 @@ public sealed class ReceiptDraftSessionService
                 return;
             }
 
-            try
-            {
-                await _mainMessageService.DeleteAsync(session, cancellationToken);
-            }
-            catch
-            {
-                // Ignore cleanup failures for stale pending messages.
-            }
-
-            _sessionStore.Remove(receiptId, out _);
-            _lockManager.Cleanup(receiptId);
+            await _sessionLifetimeService.DiscardSessionAsync(session, cancellationToken);
         }, cancellationToken);
     }
 

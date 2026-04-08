@@ -172,11 +172,33 @@ services/discord-api/
 │  │  ├─ ConfirmedSettlementHistoryDocument.cs
 │  │  └─ ReceiptDraftNotificationRequest.cs
 │  ├─ Services/
-│  │  ├─ ReceiptInteractionService.cs
-│  │  ├─ ReceiptMainMessageService.cs
-│  │  ├─ ReceiptMessageRenderer.cs
-│  │  ├─ SettlementHistoryCosmosRepository.cs
-│  │  └─ SettlementHistoryMessageRenderer.cs
+│  │  ├─ Blob/
+│  │  │  └─ BlobUploaderWarmupService.cs
+│  │  ├─ Calculations/
+│  │  │  └─ ReceiptAllocationService.cs
+│  │  ├─ History/
+│  │  │  ├─ SettlementHistoryCosmosRepository.cs
+│  │  │  ├─ SettlementHistoryMessageRenderer.cs
+│  │  │  ├─ SettlementHistoryPersistenceService.cs
+│  │  │  └─ SettlementHistoryRepositoryProvider.cs
+│  │  ├─ Interaction/
+│  │  │  ├─ ReceiptInteractionCustomIds.cs
+│  │  │  ├─ ReceiptInteractionService.cs
+│  │  │  ├─ ReceiptMainMessageDebounceService.cs
+│  │  │  ├─ ReceiptMainMessageService.cs
+│  │  │  ├─ ReceiptPrivatePanelService.cs
+│  │  │  └─ ReceiptSelectionPanelService.cs
+│  │  ├─ Rendering/
+│  │  │  └─ ReceiptMessageRenderer.cs
+│  │  ├─ Session/
+│  │  │  ├─ ReceiptDraftSessionService.cs
+│  │  │  ├─ ReceiptSessionExpiryService.cs
+│  │  │  ├─ ReceiptSessionLifetimeService.cs
+│  │  │  ├─ ReceiptSessionLockManager.cs
+│  │  │  ├─ ReceiptSessionStateService.cs
+│  │  │  └─ ReceiptSessionStore.cs
+│  │  └─ Testing/
+│  │     └─ ReceiptDraftTestDataLoader.cs
 │  ├─ Storage/
 │  │  └─ BlobImageUploader.cs
 │  ├─ TestData/
