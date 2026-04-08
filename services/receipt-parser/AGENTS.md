@@ -83,11 +83,12 @@ Cosmos DB 연결은 로컬 편의를 위해 connection string과 Azure IAM(RBAC)
 - parser는 현재 Blob URL에서 `uploadedByUserId`를 추출해 `discord-api` callback payload에 포함한다.
 - 최근 Azure 실배포 테스트에서 `uploadedByUserId` 누락으로 `discord-api /getting_draft`가 500을 반환했던 이슈가 있었고, parser의 Blob path 해석 버그를 수정했다.
 - 현재는 실제 경로(`receipts/{yyyy}/{MM}/{dd}/{userId}/{file}`)와 예전 기대 경로 fallback 둘 다 읽도록 처리했다.
-- 다음 세션에서 callback 문제가 다시 나오면 가장 먼저 `ReceiptProcessingService.TryExtractUploadedByUserId(...)`와 `discord-api`의 `/getting_draft` validation을 같이 봐야 한다.
+- 다음에 callback 문제가 다시 나오면 가장 먼저 `ReceiptDraftFactory.TryExtractUploadedByUserId(...)`와 `discord-api`의 `/getting_draft` validation을 같이 봐야 한다.
 - 현재 callback 계약상 `uploadedByUserId`는 사실상 필수다. parser 쪽 추출 규칙을 바꾸면 `discord-api` validation과 owner 권한 모델도 같이 확인해야 한다.
 - 현재 로컬과 Azure 둘 다 기준으로 Event Grid -> Document Intelligence -> Cosmos -> discord-api callback 경로 동작 확인이 끝난 상태다.
-- 최근 리팩터링으로 Cosmos container lazy initialization, blob download 경로 단순화가 들어갔다.
-- 다음 유력 작업은 `discord-api`의 language command 작업에 맞춘 callback payload/UI 계약 영향 확인과, parser 쪽 추가 리팩터링 지속이다.
+- 최근 리팩터링으로 Cosmos container lazy initialization, blob download 경로 단순화, draft document/payload 생성 분리가 들어갔다.
+- 현재 `ReceiptProcessingService`는 orchestration 중심이고, draft document / outbound payload 생성은 `ReceiptDraftFactory`가 담당한다.
+- 현재 기준으로는 parser 쪽도 대규모 추가 리팩터링보다 callback 검증/재처리 같은 실제 운영 문제에 대응하는 쪽이 우선이다.
 
 ## Security Guidelines
 - 외부 이벤트 payload는 신뢰하지 않고 항상 검증한다.

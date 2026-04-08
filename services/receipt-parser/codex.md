@@ -58,9 +58,8 @@
 - 이벤트 수신, 파싱 시작/완료/실패, Cosmos upsert 시작/완료/실패, discord-api send 시작/성공/재시도/최종 실패를 의미 있는 application log로 남긴다.
 
 9. 리팩토링
-- `ReceiptProcessingService`에서 문서/outbound payload 생성 로직을 분리:
-  - `BuildReceiptDocument(...)`
--  - `BuildDiscordDraftNotificationPayload(...)`
+- `ReceiptProcessingService`는 현재 parse -> save -> send orchestration 중심으로 유지한다.
+- draft document / outbound payload 생성과 `uploadedByUserId` blob path 추출은 `ReceiptDraftFactory`로 분리했다.
 - 공통 후처리 로직을 `SaveAndSendDraftAsync(...)`로 묶어 로컬/운영 경로가 같은 저장 및 전송 흐름을 사용한다.
 - `EventGridWebhookEndpoint`에서 payload 파싱을 `TryParseEventsAsync(...)`로 분리해 가독성 개선.
 - 원문 OCR 결과(`rawResultJson`) 저장을 제거해 Cosmos 저장 문서를 정규화 필드만 포함하도록 정리했다.
@@ -223,15 +222,16 @@ Cosmos 인증:
 - `discord-api`에 language command가 추가됐다.
 - parser payload 필드 자체는 localization과 직접 연결되지 않지만, downstream UI가 item-level discount 문구를 언어별로 렌더링할 수 있게 됐다.
 
-## Next Codex Session Quick Start
-1. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 계속 안정적으로 들어가는지 재검증
-2. discount 귀속 실패가 실제 영수증에서 얼마나 나오는지 샘플로 확인
-3. discord-api callback 인증/검증 규칙 추가
-4. 전송 실패 문서 재처리 경로 설계
-5. 추가 리팩터링이 필요하면 parsing / persistence / delivery 경계를 유지한 채 진행
-6. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인
-7. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다
-8. 변경 후 검증:
+## Current Snapshot
+1. 실제 Azure 환경에서 callback payload에 `uploadedByUserId`가 계속 안정적으로 들어가는지 재검증하는 것이 여전히 중요하다.
+2. discount 귀속 실패가 실제 영수증에서 얼마나 나오는지 샘플로 확인할 필요가 있다.
+3. `discord-api` callback 인증/검증 규칙 추가와 전송 실패 재처리 경로는 아직 열린 작업이다.
+4. parser 추가 리팩터링이 필요하면 parsing / persistence / delivery 경계를 유지한 채 진행하는 것이 맞다.
+5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인해야 한다.
+6. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다.
+7. 현재 기준으로는 speculative refactor보다 실제 운영상 문제를 근거로 수정하는 방향이 우선이다.
+
+## Current Verification Baseline
 - `dotnet build services/receipt-parser/receipt-parser.csproj -c Release`
 
 ## Last Verified State

@@ -106,5 +106,8 @@ If making changes:
 - `discord-api`는 startup 시 Blob uploader warm-up을 수행하고, pending -> draft 전환 시 업로더 표시 이름을 가능한 한 기존 세션 캐시에서 재사용한다.
 - `receipt-parser`는 startup 시 Document Intelligence 자격 증명과 Cosmos container warm-up을 수행해 첫 영수증 cold path를 줄이도록 정리됐다.
 - `discord-api`는 confirm 이후 in-memory receipt session과 session lock을 cleanup한다. confirmed 공개 메시지는 남지만, 세션 객체와 lock은 메모리에 계속 남지 않는다.
-- 다음 세션에서도 두 서비스 리팩터링을 계속 진행할 가능성이 높다. 특히 `receipt-parser` callback 검증 강화와 discount 귀속 정확도 확인이 유력하다.
+- `discord-api`의 active check receipt session TTL은 현재 마지막 interaction 기준 3시간이다. pending session / abandoned upload prompt는 15분 기준으로 정리된다.
+- `discord-api` `src/Services`는 이제 `Blob`, `Calculations`, `History`, `Interaction`, `Rendering`, `Session`, `Testing` 하위 폴더로 정리돼 있다.
+- 최근 구조/성능 재점검 문서는 `docs/problem-searching/performance-review-2026-04-07-post-refactor.md`에, 리팩터링 총정리 문서는 `docs/problem-searching/refactor-summary-2026-04-07.md`에 있다.
+- 현재 판단상 치명적 추가 수정 포인트는 없고, 당분간은 코드 변경보다 실제 사용 중 버그 재현 여부를 기준으로 국소 수정하는 방향이 맞다.
 - `docs/decisions`는 현재 `README.md`에 정의한 공통 ADR 포맷과 번호 체계를 따른다. 최근 관련 결정은 `012`(세션별 직렬화 + 공개 메시지 디바운스)와 `013`(session-scoped in-memory cache)다.

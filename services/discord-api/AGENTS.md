@@ -95,6 +95,9 @@ If the service structure changes significantly, update:
 - `/custom`이 추가돼 parser 없이 빈 receipt check 메시지를 바로 시작할 수 있다. `payment_contact`는 optional slash option이고, item이 1개 이상이며 모두 배정됐을 때만 confirm 가능하다.
 - `Currency == KRW`인 draft는 일반 `Tax`를 포함세로 보고 `0`으로 정규화한다. 그래서 한국 영수증은 일반 tax header/section이 보이지 않고 정산에도 한 번 더 붙지 않는다.
 - 최근 성능 리팩터링으로 startup 시 `BlobUploaderWarmupService`가 Blob container readiness를 미리 준비한다. 업로드 hot path에서는 one-time readiness를 재사용한다.
-- parser draft publish 시 업로더 표시 이름은 기존 pending session의 `UploadedByDisplayName` 또는 `UserDisplayNames`를 우선 재사용하고, 없을 때만 Discord REST fallback을 사용한다.
+- parser draft publish 시 업로더 표시 이름은 기존 pending session의 `UploadedByDisplayName` 또는 `UserDisplayNames`를 우선 재사용하고, draft session lock 안에서 다시 확인한 뒤 없을 때만 Discord REST fallback을 사용한다.
 - confirm 이후에는 receipt session과 session lock을 메모리에서 cleanup한다. cancel과 pending session delete도 같은 cleanup 경로를 탄다.
-- 성능 점검 메모는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
+- `src/Services`는 현재 `Blob`, `Calculations`, `History`, `Interaction`, `Rendering`, `Session`, `Testing` 하위 구조로 정리돼 있다.
+- active check receipt session은 현재 마지막 interaction 기준 3시간 inactivity 후 정리된다.
+- 성능/리스크 재점검 메모는 `docs/problem-searching/performance-review-2026-04-07-post-refactor.md`에 있고, 구조 정리 요약은 `docs/problem-searching/refactor-summary-2026-04-07.md`에 있다.
+- 현재 기준으로는 추가 대규모 리팩터링보다, 실제 Discord 사용 중 재현되는 버그를 기준으로 국소 수정하는 방향이 맞다.
