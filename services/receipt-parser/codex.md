@@ -77,14 +77,14 @@
 - 같은 item 아래 할인 line이 연속되면 같은 item에 누적한다.
 - 귀속 성공 item은 원가와 할인 금액을 함께 보존하도록 정규화한다.
 - 귀속 실패 할인은 downstream 계산과 UI에서 자동 반영하지 않는다.
-- 이 정책은 `docs/decisions/019-attribute-negative-receipt-lines-to-the-previous-item-and-ignore-unmatched-discounts.md`를 따른다.
+- 이 정책은 `docs/Korean/decisions/019-attribute-negative-receipt-lines-to-the-previous-item-and-ignore-unmatched-discounts.md`를 따른다.
 
 12. 최근 성능 정리
 - startup 시 `ParserWarmupService`가 parser warm-up을 수행한다.
 - Azure AD 인증 경로를 쓸 때 `DocumentIntelligenceReceiptParser`는 Document Intelligence와 Storage scope token을 미리 받아 first-hit 지연을 줄인다.
 - `CosmosReceiptRepository`는 startup warm-up에서 container initialization을 먼저 수행한다.
 - 이 변경의 목적은 첫 영수증 처리의 cold path를 줄이는 것이다.
-- 관련 조사 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
+- 관련 조사 문서는 `docs/Korean/problem-searching/performance-review-2026-04-04.md`에 있다.
 
 ## Current File Layout (relevant)
 ```text
@@ -228,7 +228,7 @@ Cosmos 인증:
 3. `discord-api` callback 인증/검증 규칙 추가와 전송 실패 재처리 경로는 아직 열린 작업이다.
 4. parser 추가 리팩터링이 필요하면 parsing / persistence / delivery 경계를 유지한 채 진행하는 것이 맞다.
 5. Docker/CI workflow가 shared project build context를 계속 만족하는지 확인해야 한다.
-6. 관련 decision 문서를 추가할 경우 `docs/decisions/README.md` 포맷과 번호 체계를 따른다.
+6. 관련 decision 문서를 추가할 경우 `docs/Korean/decisions/README.md` 포맷과 번호 체계를 따른다.
 7. 현재 기준으로는 speculative refactor보다 실제 운영상 문제를 근거로 수정하는 방향이 우선이다.
 
 ## Current Verification Baseline

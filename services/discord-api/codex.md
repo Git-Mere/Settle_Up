@@ -132,7 +132,7 @@
 - 그래서 한국 영수증은 일반 tax가 item 금액 위에 한 번 더 붙지 않는다.
 - tax 값이 `0`이 되므로 check/confirmed UI의 일반 tax header와 tax 섹션도 함께 표시되지 않는다.
 - 현재 이 정책은 일반 tax에만 적용하고, `Tip`, `SST`, `SLT`는 그대로 둔다.
-- 관련 결정은 `docs/decisions/022-treat-general-tax-on-krw-receipts-as-tax-included.md`를 따른다.
+- 관련 결정은 `docs/Korean/decisions/022-treat-general-tax-on-krw-receipts-as-tax-included.md`를 따른다.
 
 20. 최근 성능 / lifecycle 정리
 - `BlobImageUploader`는 업로드마다 container existence check를 직접 반복하지 않고, one-time readiness를 재사용한다.
@@ -140,7 +140,7 @@
 - parser draft publish 직전 업로더 표시 이름은 기존 pending session에 있는 cached display name을 우선 재사용한다.
 - confirm 이후에는 공개 confirmed 메시지를 먼저 갱신한 뒤, in-memory receipt session과 session lock을 cleanup한다.
 - pending 임시 receipt id가 실제 draft receipt id로 교체될 때 예전 lock도 정리한다.
-- 관련 조사 문서는 `docs/problem-searching/performance-review-2026-04-04.md`에 있다.
+- 관련 조사 문서는 `docs/Korean/problem-searching/performance-review-2026-04-04.md`에 있다.
 
 21. stale state TTL cleanup 추가
 - background hosted service인 `ReceiptSessionExpiryService`가 1분마다 stale state를 sweep한다.
@@ -296,8 +296,8 @@ services/discord-api/
 - `System.Net.Http` raw activity dump는 더 이상 콘솔에 직접 출력하지 않는다.
 
 ## Current Constraints / Next Step
-- `docs/decisions/007-use-http-for-communication-between-parser-discordapi`에 따라 기본 callback endpoint 골격은 추가됐다.
-- `docs/decisions/012-serialize-receipt-session-updates-and-debounce-public-message-publishing`와 `013-use-session-scoped-in-memory-cache-for-discord-receipt-ui`는 현재 동시성/성능 최적화의 기준 문서다.
+- `docs/Korean/decisions/007-use-http-for-communication-between-parser-discordapi.md`에 따라 기본 callback endpoint 골격은 추가됐다.
+- `docs/Korean/decisions/012-serialize-receipt-session-updates-and-debounce-public-message-publishing.md`와 `013-use-session-scoped-in-memory-cache-for-discord-receipt-ui.md`는 현재 동시성/성능 최적화의 기준 문서다.
 - 현재 로컬과 Azure 둘 다 기준으로 receipt upload -> pending -> parser draft -> check -> confirm -> history 저장/조회까지 동작 확인이 끝났다.
 - language command는 구현됐고, 현재 공개 메시지는 owner 언어 기준, private/ephemeral/history는 사용자 언어 기준으로 동작한다.
 - 공개 Discord 메시지는 사용자별로 다른 disabled 상태나 다른 언어를 줄 수 없다는 제약이 여전히 있다.
@@ -339,7 +339,7 @@ services/discord-api/
 3. `/custom` 사용 흐름에서 추가 편집 UX가 필요한지 확인
 4. discount 귀속 실패가 실제로 얼마나 나오는지 운영 샘플 확인
 5. Dockerfile / workflow가 shared project build context를 계속 만족하는지 확인
-6. 필요 시 `docs/decisions/019`, `020`, `021` 포함 관련 ADR을 먼저 확인한다
+6. 필요 시 `docs/Korean/decisions/019`, `020`, `021` 포함 관련 ADR을 먼저 확인한다
 7. 변경 후 검증:
 - `dotnet build services/discord-api/src/DiscordApi.csproj -c Release`
 

@@ -51,6 +51,21 @@ Additional implemented behavior:
 - Integrated Azure Document Intelligence to convert receipt images into normalized structured data for downstream interaction
 - Focused on production-oriented concerns such as retry behavior, observability, warm-up paths, and cleanup of stale in-memory state
 
+## AI-Assisted Development Workflow
+
+AI was used as a practical engineering tool throughout this project, with different tools serving different roles.
+
+- Used ChatGPT to explore higher-level architecture, system direction, and design tradeoffs
+- Used Codex to help implement code changes, refactors, and documentation drafts in smaller, focused tasks
+- Broke larger problems into smaller verifiable units to improve output quality, reduce context drift, and control token usage
+- Used AI to accelerate repetitive work such as scaffolding, restructuring, documentation drafting, and iterative cleanup
+- Verified generated outputs through manual review, project builds, runtime checks, and follow-up fixes before accepting changes
+- Kept final responsibility for correctness, integration, debugging, and technical decisions under direct developer control
+
+This workflow improved iteration speed without giving up engineering ownership or system understanding.
+
+> Note: Many of the documents in this repository were drafted and refined through discussion with Codex, with final wording and project alignment validated against the real codebase.
+
 ## Repository Structure
 
 This repository is intended to stay compatible with future service separation.
@@ -63,9 +78,8 @@ Settle_Up/
 ├─ shared/
 │  └─ SettleUp.Observability/
 ├─ docs/
-│  ├─ decisions/
-│  └─ problem-searching/
-├─ infra/
+│  ├─ English/
+│  └─ Korean/
 └─ Settle_Up.sln
 ```
 
@@ -74,8 +88,8 @@ Relevant directories:
 - `services/discord-api`: Discord bot worker + HTTP receiver service
 - `services/receipt-parser`: Receipt parsing web service
 - `shared/SettleUp.Observability`: Shared observability/bootstrap project used by current services
-- `docs/decisions`: ADR-style design decisions
-- `docs/problem-searching`: performance investigations, refactor reviews, and troubleshooting notes
+- `docs/English`: English project documents, ADRs, and troubleshooting notes
+- `docs/Korean`: Korean project documents, ADRs, troubleshooting notes, and `study.md`
 
 ## Service Breakdown
 
@@ -295,11 +309,19 @@ If shared project references, Docker build contexts, or service project referenc
 ## Documentation Map
 
 - Root project notes: [codex.md](/home/aero-mere/CS397/Settle_Up/codex.md)
-- Architecture decisions: [docs/decisions/README.md](/home/aero-mere/CS397/Settle_Up/docs/decisions/README.md)
+- English docs root: [docs/English](/home/aero-mere/CS397/Settle_Up/docs/English)
+- Korean docs root: [docs/Korean](/home/aero-mere/CS397/Settle_Up/docs/Korean)
+- Architecture decisions:
+  - English: [docs/English/decisions/README.md](/home/aero-mere/CS397/Settle_Up/docs/English/decisions/README.md)
+  - Korean: [docs/Korean/decisions/README.md](/home/aero-mere/CS397/Settle_Up/docs/Korean/decisions/README.md)
 - Discord API service docs: [services/discord-api/codex.md](/home/aero-mere/CS397/Settle_Up/services/discord-api/codex.md)
 - Receipt parser service docs: [services/receipt-parser/codex.md](/home/aero-mere/CS397/Settle_Up/services/receipt-parser/codex.md)
-- Recent performance review: [performance-review-2026-04-07-post-refactor.md](/home/aero-mere/CS397/Settle_Up/docs/problem-searching/performance-review-2026-04-07-post-refactor.md)
-- Refactor summary: [refactor-summary-2026-04-07.md](/home/aero-mere/CS397/Settle_Up/docs/problem-searching/refactor-summary-2026-04-07.md)
+- Recent performance review:
+  - English: [performance-review-2026-04-07-post-refactor.md](/home/aero-mere/CS397/Settle_Up/docs/English/problem-searching/performance-review-2026-04-07-post-refactor.md)
+  - Korean: [performance-review-2026-04-07-post-refactor.md](/home/aero-mere/CS397/Settle_Up/docs/Korean/problem-searching/performance-review-2026-04-07-post-refactor.md)
+- Refactor summary:
+  - English: [refactor-summary-2026-04-07.md](/home/aero-mere/CS397/Settle_Up/docs/English/problem-searching/refactor-summary-2026-04-07.md)
+  - Korean: [refactor-summary-2026-04-07.md](/home/aero-mere/CS397/Settle_Up/docs/Korean/problem-searching/refactor-summary-2026-04-07.md)
 
 ## Near-Term Priorities
 
