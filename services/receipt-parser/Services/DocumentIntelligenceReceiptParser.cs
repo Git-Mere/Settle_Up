@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using receipt_parser.Configuration;
 using receipt_parser.Models;
 using receipt_parser.Observability;
+using System.Diagnostics;
 
 namespace receipt_parser.Services;
 
@@ -87,6 +88,7 @@ public sealed class DocumentIntelligenceReceiptParser
     {
         using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.document_intelligence.parse_binary");
         activity?.SetTag("receipt.source", source);
+        var startedAt = Stopwatch.GetTimestamp();
 
         Operation<AnalyzeResult> operation;
         try
@@ -101,6 +103,8 @@ public sealed class DocumentIntelligenceReceiptParser
         {
             activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
             activity?.AddException(ex);
+            Telemetry.ReceiptParseFailedCounter.Add(1);
+            Telemetry.ReceiptParseDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
             _logger.LogError(ex, "Receipt parsing failed. Source={Source}", source);
             throw;
         }
@@ -133,11 +137,14 @@ public sealed class DocumentIntelligenceReceiptParser
 
         var receiptId = Guid.NewGuid().ToString("N");
         _logger.LogInformation(
-            "Receipt parsing completed. ReceiptId={ReceiptId} Source={Source} MerchantName={MerchantName} Total={Total}",
+            "Receipt parsing completed. ReceiptId={ReceiptId} Source={Source} MerchantName={MerchantName} Total={Total} DurationMs={DurationMs}",
             receiptId,
             source,
             merchantName,
-            total);
+            total,
+            Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+        Telemetry.ReceiptParseSucceededCounter.Add(1);
+        Telemetry.ReceiptParseDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
 
         return new ParsedReceiptResult(
             ReceiptId: receiptId,

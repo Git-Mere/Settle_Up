@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using receipt_parser.Configuration;
 using receipt_parser.Models;
 using receipt_parser.Observability;
+using System.Diagnostics;
 
 namespace receipt_parser.Services;
 
@@ -47,6 +48,7 @@ public sealed class CosmosReceiptRepository
     {
         using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.cosmos.upsert");
         activity?.SetTag("receipt.id", document.Id);
+        var startedAt = Stopwatch.GetTimestamp();
         _logger.LogInformation(
             "Cosmos write started. ReceiptId={ReceiptId} DatabaseId={DatabaseId} ContainerId={ContainerId}",
             document.Id,
@@ -65,10 +67,12 @@ public sealed class CosmosReceiptRepository
         {
             activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
             activity?.AddException(ex);
+            Telemetry.CosmosWriteDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
             _logger.LogError(ex, "Cosmos write failed. ReceiptId={ReceiptId}", document.Id);
             throw;
         }
 
+        Telemetry.CosmosWriteDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         _logger.LogInformation("Cosmos write completed. ReceiptId={ReceiptId}", document.Id);
     }
 

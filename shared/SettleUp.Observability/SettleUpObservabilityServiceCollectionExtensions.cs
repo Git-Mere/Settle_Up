@@ -1,6 +1,7 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -20,6 +21,31 @@ public static class SettleUpObservabilityServiceCollectionExtensions
 
         services
             .AddOpenTelemetry()
+            .WithMetrics(metrics =>
+            {
+                metrics.SetResourceBuilder(ResourceBuilder.CreateDefault()
+                    .AddService(options.ServiceName, serviceVersion: options.ServiceVersion));
+
+                foreach (var meterName in options.MeterNames)
+                {
+                    metrics.AddMeter(meterName);
+                }
+
+                metrics.AddHttpClientInstrumentation();
+
+                if (options.IncludeAspNetCoreInstrumentation)
+                {
+                    metrics.AddAspNetCoreInstrumentation();
+                }
+
+                if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+                {
+                    metrics.AddAzureMonitorMetricExporter(exporterOptions =>
+                    {
+                        exporterOptions.ConnectionString = appInsightsConnectionString;
+                    });
+                }
+            })
             .WithTracing(tracing =>
             {
                 tracing

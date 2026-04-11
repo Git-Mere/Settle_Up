@@ -39,6 +39,7 @@ public static class GettingDraftEndpoint
                 "Draft found. draftId={DraftId} ItemCount={ItemCount}",
                 draftId,
                 payload.Items?.Count ?? 0);
+            Telemetry.DraftReceivedCounter.Add(1);
 
             await receiptDraftSessionService.CreateOrUpdateSessionFromDraftAsync(payload, cancellationToken);
 

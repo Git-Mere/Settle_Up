@@ -58,5 +58,17 @@ public sealed class ReceiptSessionLifetimeService
 
         _sessionStore.Remove(session.ReceiptId, out _);
         _lockManager.Cleanup(session.ReceiptId);
+
+        if (!session.IsConfirmed)
+        {
+            if (session.IsDraftReady)
+            {
+                Telemetry.ActiveReceiptSessionsCounter.Add(-1);
+            }
+            else
+            {
+                Telemetry.ActivePendingUploadSessionsCounter.Add(-1);
+            }
+        }
     }
 }

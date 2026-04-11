@@ -56,6 +56,7 @@ public sealed class ReceiptDraftSessionService
 
             await _mainMessageService.SendToChannelAsync(session, targetChannel, cancellationToken);
             _sessionStore.AddOrUpdate(session);
+            Telemetry.ActivePendingUploadSessionsCounter.Add(1);
             createdSession = session;
 
             _logger.LogInformation(
@@ -126,6 +127,7 @@ public sealed class ReceiptDraftSessionService
 
             await _mainMessageService.SendToSlashCommandAsync(session, command);
             _sessionStore.AddOrUpdate(session);
+            Telemetry.ActiveReceiptSessionsCounter.Add(1);
             createdSession = session;
 
             _logger.LogInformation(
@@ -176,6 +178,7 @@ public sealed class ReceiptDraftSessionService
         await _lockManager.ExecuteAsync(lockKey, async () =>
         {
             var session = FindExistingSession(payload, receiptId, out var previousReceiptId, out var previousBlobUrl);
+            var createdNewSession = session is null;
             var displayName = await ResolveUploadedByDisplayNameAsync(uploadedByUserId, session);
             session ??= ReceiptSessionStateService.CreateSessionFromDraft(payload, displayName);
             var shouldReplacePendingMessage =
@@ -241,9 +244,24 @@ public sealed class ReceiptDraftSessionService
                 _lockManager.Cleanup(previousReceiptId);
             }
 
+            if (session.IsDraftReady)
+            {
+                if (!string.IsNullOrWhiteSpace(previousReceiptId) &&
+                    !string.Equals(previousReceiptId, session.ReceiptId, StringComparison.Ordinal))
+                {
+                    Telemetry.ActivePendingUploadSessionsCounter.Add(-1);
+                    Telemetry.ActiveReceiptSessionsCounter.Add(1);
+                }
+                else if (createdNewSession)
+                {
+                    Telemetry.ActiveReceiptSessionsCounter.Add(1);
+                }
+            }
+
             _logger.LogInformation(
-                "Receipt session upserted from draft. ReceiptId={ReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId} ItemCount={ItemCount}",
+                "Receipt session upserted from draft. ReceiptId={ReceiptId} PreviousReceiptId={PreviousReceiptId} UserId={UserId} ChannelId={ChannelId} MessageId={MessageId} ItemCount={ItemCount}",
                 session.ReceiptId,
+                previousReceiptId,
                 uploadedByUserId,
                 session.MainChannelId,
                 session.MainMessageId,

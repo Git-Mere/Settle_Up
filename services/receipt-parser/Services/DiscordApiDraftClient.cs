@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using receipt_parser.Configuration;
 using receipt_parser.Models;
@@ -40,6 +41,7 @@ public sealed class DiscordApiDraftClient
         var targetUri = ResolveTargetUri(preferLocalTestUrl);
         var displayTarget = GetDisplayTarget(targetUri);
         var maxAttempts = MaxRetries + 1;
+        var startedAt = Stopwatch.GetTimestamp();
 
         using var activity = Telemetry.ActivitySource.StartActivity("receipt_parser.discord_api.send");
         activity?.SetTag("receipt.id", payload.Id);
@@ -68,18 +70,23 @@ public sealed class DiscordApiDraftClient
 
                 if (response.IsSuccessStatusCode)
                 {
+                    var durationMs = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+                    Telemetry.DiscordCallbackSucceededCounter.Add(1);
+                    Telemetry.DiscordCallbackDurationMs.Record(durationMs);
                     _logger.LogInformation(
-                        "Discord API send succeeded. ReceiptId={ReceiptId} StatusCode={StatusCode} Attempt={Attempt} TargetUrl={TargetUrl}",
+                        "Discord API send succeeded. ReceiptId={ReceiptId} StatusCode={StatusCode} Attempt={Attempt} TargetUrl={TargetUrl} DurationMs={DurationMs}",
                         payload.Id,
                         (int)response.StatusCode,
                         attempt,
-                        displayTarget);
+                        displayTarget,
+                        durationMs);
 
                     return new DiscordApiDraftDeliveryResult(attempt, response.StatusCode);
                 }
 
                 if (!IsRetryableStatusCode(response.StatusCode))
                 {
+                    RecordCallbackFailure(startedAt);
                     _logger.LogError(
                         "Discord API send failed without retry. ReceiptId={ReceiptId} StatusCode={StatusCode} Attempt={Attempt} TargetUrl={TargetUrl}",
                         payload.Id,
@@ -95,6 +102,7 @@ public sealed class DiscordApiDraftClient
 
                 if (attempt == maxAttempts)
                 {
+                    RecordCallbackFailure(startedAt);
                     _logger.LogError(
                         "Discord API send failed after retries exhausted. ReceiptId={ReceiptId} StatusCode={StatusCode} Attempt={Attempt} TargetUrl={TargetUrl}",
                         payload.Id,
@@ -109,6 +117,7 @@ public sealed class DiscordApiDraftClient
                 }
 
                 var delay = RetryDelays[attempt - 1];
+                Telemetry.DiscordCallbackRetryCounter.Add(1);
                 _logger.LogWarning(
                     "Discord API send will retry after response failure. ReceiptId={ReceiptId} StatusCode={StatusCode} Attempt={Attempt} NextAttempt={NextAttempt} DelaySeconds={DelaySeconds} TargetUrl={TargetUrl}",
                     payload.Id,
@@ -124,6 +133,7 @@ public sealed class DiscordApiDraftClient
             {
                 if (attempt == maxAttempts)
                 {
+                    RecordCallbackFailure(startedAt);
                     _logger.LogError(
                         ex,
                         "Discord API send timed out after retries exhausted. ReceiptId={ReceiptId} Attempt={Attempt} TargetUrl={TargetUrl}",
@@ -138,6 +148,7 @@ public sealed class DiscordApiDraftClient
                 }
 
                 var delay = RetryDelays[attempt - 1];
+                Telemetry.DiscordCallbackRetryCounter.Add(1);
                 _logger.LogWarning(
                     ex,
                     "Discord API send timed out and will retry. ReceiptId={ReceiptId} Attempt={Attempt} NextAttempt={NextAttempt} DelaySeconds={DelaySeconds} TargetUrl={TargetUrl}",
@@ -153,6 +164,7 @@ public sealed class DiscordApiDraftClient
             {
                 if (attempt == maxAttempts)
                 {
+                    RecordCallbackFailure(startedAt);
                     _logger.LogError(
                         ex,
                         "Discord API send failed after retries exhausted. ReceiptId={ReceiptId} Attempt={Attempt} TargetUrl={TargetUrl}",
@@ -167,6 +179,7 @@ public sealed class DiscordApiDraftClient
                 }
 
                 var delay = RetryDelays[attempt - 1];
+                Telemetry.DiscordCallbackRetryCounter.Add(1);
                 _logger.LogWarning(
                     ex,
                     "Discord API send failed and will retry. ReceiptId={ReceiptId} Attempt={Attempt} NextAttempt={NextAttempt} DelaySeconds={DelaySeconds} TargetUrl={TargetUrl}",
@@ -183,6 +196,12 @@ public sealed class DiscordApiDraftClient
         throw new DiscordApiDraftDeliveryException(
             "discord-api request failed before a response was received.",
             maxAttempts);
+    }
+
+    private static void RecordCallbackFailure(long startedAt)
+    {
+        Telemetry.DiscordCallbackFailedCounter.Add(1);
+        Telemetry.DiscordCallbackDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
     }
 
     private Uri ResolveTargetUri(bool preferLocalTestUrl)

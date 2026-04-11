@@ -35,6 +35,7 @@ builder.Services.AddSettleUpObservability(
         ServiceName = serviceName,
         ServiceVersion = serviceVersion,
         ActivitySourceName = Telemetry.ActivitySourceName,
+        MeterNames = [Telemetry.MeterName],
         IncludeAspNetCoreInstrumentation = true
     });
 

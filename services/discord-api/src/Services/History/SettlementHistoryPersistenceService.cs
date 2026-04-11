@@ -1,4 +1,5 @@
 using Discord.WebSocket;
+using System.Diagnostics;
 
 public sealed class SettlementHistoryPersistenceService
 {
@@ -39,11 +40,20 @@ public sealed class SettlementHistoryPersistenceService
         }
 
         Exception? lastException = null;
+        var startedAt = Stopwatch.GetTimestamp();
         for (var attempt = 1; attempt <= RetryDelays.Length + 1; attempt++)
         {
             try
             {
                 await repository.SaveAsync(historyDocument);
+                var durationMs = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+                Telemetry.HistorySaveDurationMs.Record(durationMs);
+                _logger.LogInformation(
+                    "Settlement history saved. ReceiptId={ReceiptId} HistoryId={HistoryId} Attempt={Attempt} DurationMs={DurationMs}",
+                    historyDocument.ReceiptId,
+                    historyDocument.Id,
+                    attempt,
+                    durationMs);
                 return;
             }
             catch (Exception ex)
@@ -64,6 +74,8 @@ public sealed class SettlementHistoryPersistenceService
             }
         }
 
+        Telemetry.HistorySaveFailedCounter.Add(1);
+        Telemetry.HistorySaveDurationMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         _logger.LogError(
             lastException,
             "Settlement history save exhausted retries. ReceiptId={ReceiptId} HistoryId={HistoryId}",

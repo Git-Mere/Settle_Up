@@ -23,4 +23,28 @@ static class Telemetry
 
     public static readonly Histogram<double> ImageWaitDurationMs =
         Meter.CreateHistogram<double>("discord_image_wait_duration_ms");
+
+    public static readonly Counter<long> DraftReceivedCounter =
+        Meter.CreateCounter<long>("draft_received_total");
+
+    public static readonly Counter<long> ReceiptConfirmedCounter =
+        Meter.CreateCounter<long>("receipt_confirmed_total");
+
+    public static readonly Counter<long> HistorySaveFailedCounter =
+        Meter.CreateCounter<long>("history_save_failed_total");
+
+    public static readonly Counter<long> PermissionDeniedCounter =
+        Meter.CreateCounter<long>("discord_permission_denied_total");
+
+    public static readonly UpDownCounter<long> ActiveReceiptSessionsCounter =
+        Meter.CreateUpDownCounter<long>("active_receipt_sessions");
+
+    public static readonly UpDownCounter<long> ActivePendingUploadSessionsCounter =
+        Meter.CreateUpDownCounter<long>("active_pending_upload_sessions");
+
+    public static readonly Histogram<double> ReceiptConfirmDurationMs =
+        Meter.CreateHistogram<double>("receipt_confirm_duration_ms");
+
+    public static readonly Histogram<double> HistorySaveDurationMs =
+        Meter.CreateHistogram<double>("history_save_duration_ms");
 }

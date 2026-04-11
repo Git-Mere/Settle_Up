@@ -1,5 +1,6 @@
 using Discord;
 using Discord.WebSocket;
+using System.Diagnostics;
 
 public sealed class ReceiptInteractionService
 {
@@ -12,6 +13,7 @@ public sealed class ReceiptInteractionService
     private readonly ReceiptSessionLifetimeService _sessionLifetimeService;
     private readonly SettlementHistoryPersistenceService _settlementHistoryPersistenceService;
     private readonly UserLanguagePreferenceStore _languagePreferenceStore;
+    private readonly ILogger<ReceiptInteractionService> _logger;
 
     public ReceiptInteractionService(
         ReceiptSessionStore sessionStore,
@@ -34,6 +36,7 @@ public sealed class ReceiptInteractionService
         _sessionLifetimeService = sessionLifetimeService;
         _settlementHistoryPersistenceService = settlementHistoryPersistenceService;
         _languagePreferenceStore = languagePreferenceStore;
+        _logger = logger;
     }
 
     public async Task<string?> HandleButtonAsync(SocketMessageComponent component)
@@ -202,6 +205,7 @@ public sealed class ReceiptInteractionService
             if ((mode == ReceiptSelectionMode.Remove || mode == ReceiptSelectionMode.Edit || mode == ReceiptSelectionMode.Alcohol) &&
                 !IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied(mode.ToString().ToLowerInvariant(), receiptId, component.User.Id, session.UploadedByUserId);
                 await _selectionPanelService.RespondOrUpdateAsync(component, updateExistingMessage, DiscordUiText.OwnerOnlyFeature(language), null);
                 return "forbidden_user";
             }
@@ -287,6 +291,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("remove_item", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyRemove(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -330,6 +335,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("edit_item", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyEdit(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -378,6 +384,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("mark_alcohol", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyAlcohol(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -417,6 +424,7 @@ public sealed class ReceiptInteractionService
 
         if (!IsOwner(session, component.User.Id))
         {
+            LogPermissionDenied("open_add_item_modal", receiptId, component.User.Id, session.UploadedByUserId);
             await component.RespondAsync(DiscordUiText.OwnerOnlyAdd(GetLanguage(component.User.Id)), ephemeral: true);
             return "forbidden_user";
         }
@@ -463,6 +471,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, modal.User.Id))
             {
+                LogPermissionDenied("add_item", receiptId, modal.User.Id, session.UploadedByUserId);
                 await modal.RespondAsync(DiscordUiText.OwnerOnlyAdd(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -512,6 +521,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, modal.User.Id))
             {
+                LogPermissionDenied("edit_item", receiptId, modal.User.Id, session.UploadedByUserId);
                 await modal.RespondAsync(DiscordUiText.OwnerOnlyEdit(GetLanguage(modal.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -568,6 +578,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("confirm", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyConfirm(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -579,12 +590,14 @@ public sealed class ReceiptInteractionService
                 return "confirm_blocked";
             }
 
+            var startedAt = Stopwatch.GetTimestamp();
             await component.DeferAsync();
             session.IsConfirmed = true;
             session.ConfirmedAtUtc = DateTimeOffset.UtcNow;
             session.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _sessionStore.AddOrUpdate(session);
             await _mainMessageService.RefreshAsync(session);
+            var durationMs = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
 
             var historyDocument = ConfirmedSettlementHistoryDocument.FromSession(session);
             _ = _settlementHistoryPersistenceService.SaveInBackgroundAsync(
@@ -593,6 +606,18 @@ public sealed class ReceiptInteractionService
                 DiscordUiText.HistorySaveFailed(GetLanguage(component.User.Id)));
 
             await _sessionLifetimeService.CompleteSessionAsync(session);
+            Telemetry.ActiveReceiptSessionsCounter.Add(-1);
+            Telemetry.ReceiptConfirmedCounter.Add(1);
+            Telemetry.ReceiptConfirmDurationMs.Record(durationMs);
+            _logger.LogInformation(
+                "Receipt confirmed. ReceiptId={ReceiptId} OwnerUserId={OwnerUserId} ParticipantCount={ParticipantCount} ItemCount={ItemCount} Total={Total} HistorySaveQueued={HistorySaveQueued} DurationMs={DurationMs}",
+                session.ReceiptId,
+                session.UploadedByUserId,
+                session.UserSelections.Count,
+                session.Items.Count,
+                session.Total,
+                true,
+                durationMs);
 
             return "confirmed";
         });
@@ -610,6 +635,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("cancel", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyCancel(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -633,6 +659,7 @@ public sealed class ReceiptInteractionService
 
             if (!IsOwner(session, component.User.Id))
             {
+                LogPermissionDenied("change_tip_mode", receiptId, component.User.Id, session.UploadedByUserId);
                 await component.RespondAsync(DiscordUiText.OwnerOnlyTipMode(GetLanguage(component.User.Id)), ephemeral: true);
                 return "forbidden_user";
             }
@@ -686,5 +713,16 @@ public sealed class ReceiptInteractionService
     private AppLanguage GetLanguage(string userId)
     {
         return _languagePreferenceStore.GetLanguage(userId);
+    }
+
+    private void LogPermissionDenied(string action, string receiptId, ulong userId, string? ownerUserId)
+    {
+        Telemetry.PermissionDeniedCounter.Add(1);
+        _logger.LogWarning(
+            "Receipt action denied. Action={Action} ReceiptId={ReceiptId} UserId={UserId} OwnerUserId={OwnerUserId}",
+            action,
+            receiptId,
+            userId,
+            ownerUserId);
     }
 }
