@@ -12,6 +12,14 @@ Add the Discord bot here:
 
 - [Invite Settle Up Bot](https://discord.com/oauth2/authorize?client_id=1479660781950734446)
 
+## Project Overview
+
+![Project overview 1](overview_images/1.png)
+
+![Project overview 2](overview_images/2.png)
+
+![Project overview 3](overview_images/3.png)
+
 ## Overview
 
 Settle Up is being built as a multi-service mono-repo. The long-term goal is to support receipt upload, OCR-based parsing, collaborative item assignment, and final settlement calculation through a clean service boundary between ingestion, parsing, and downstream settlement workflows.
