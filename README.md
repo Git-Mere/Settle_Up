@@ -271,6 +271,40 @@ Current implemented commands/features include:
 - Receipt parser project: [services/receipt-parser/receipt-parser.csproj](/home/aero-mere/CS397/Settle_Up/services/receipt-parser/receipt-parser.csproj)
 - Root solution: [Settle_Up.sln](/home/aero-mere/CS397/Settle_Up/Settle_Up.sln)
 
+### Build
+
+Build all current services from the repository root:
+
+```bash
+dotnet build Settle_Up.sln -m:1
+```
+
+The `-m:1` flag keeps the solution build single-node. Both service projects reference the shared observability project, and this avoids duplicate concurrent work on that shared project during local solution builds.
+
+You can also build each service directly:
+
+```bash
+dotnet build services/discord-api/src/DiscordApi.csproj
+dotnet build services/receipt-parser/receipt-parser.csproj
+```
+
+No custom binary dependencies are required in the source upload. NuGet dependencies are declared in the project files and should be restored by the .NET SDK.
+
+### Hosted Service Access
+
+The user-facing hosted entry point is the Discord bot:
+
+- [Invite Settle Up Bot](https://discord.com/oauth2/authorize?client_id=1479660781950734446)
+
+After inviting the bot to a Discord server, use these commands:
+
+- `/settle-up`: upload a receipt image and start an OCR-backed settlement flow.
+- `/custom`: start a manual settlement flow without uploading a receipt.
+- `/language`: choose Korean or English UI responses.
+- `/history`: view recently confirmed settlement results.
+
+The `receipt-parser` service is deployed as an internal backend service. It is triggered by Azure Event Grid when `discord-api` uploads a receipt image to Azure Blob Storage, so users normally interact through Discord rather than calling the parser URL directly.
+
 ### Environment Variables
 
 The exact configuration differs by service.
